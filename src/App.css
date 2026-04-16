@@ -191,7 +191,7 @@
   align-items: center;
   gap: 8px;
 
-  transition: background 0.2s ease, opacity 0.2s ease, color 0.2s ease;
+  transition: background 0.3s ease, opacity 0.2s ease, color 0.3s ease;
 }
 
 .saved-button--accent {
@@ -212,7 +212,7 @@
 }
 
 .today-card--active {
-  outline: 1px solid rgba(255, 255, 255, 0.25);
+  outline: 1px solid #d36f55;
 }
 
 .past-entry-list {

@@ -1,7 +1,7 @@
 :root {
   font-family: "Courier New", Courier, monospace;
   color: #f2f2f2;
-  background: #3e3e3e;
+  background: #171717;
 }
 
 ::selection {
@@ -27,7 +27,7 @@ body,
 
 body {
   min-width: 320px;
-  background: #3e3e3e;
+  background: #171717;
 }
 
 button,
