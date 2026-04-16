@@ -4,6 +4,16 @@
   background: #3e3e3e;
 }
 
+::selection {
+  background: #d94d28;
+  color: #ffffff;
+}
+
+::-moz-selection {
+  background: #d94d28;
+  color: #ffffff;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -17,6 +27,7 @@ body,
 
 body {
   min-width: 320px;
+  background: #3e3e3e;
 }
 
 button,
