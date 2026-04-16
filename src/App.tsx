@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "./supabaseClient";
 import "./App.css";
 
 type PastEntry = {
@@ -7,6 +8,14 @@ type PastEntry = {
   dateLabel: string;
   content: string;
 };
+
+type AppProps = {
+  journalName: string;
+};
+
+async function handleSignOut() {
+  await supabase.auth.signOut();
+}
 
 function getLocalDayKey(date: Date) {
   const year = date.getFullYear();
@@ -32,16 +41,17 @@ function formatShortDate(date: Date) {
   });
 }
 
-function App() {
+function App({ journalName }: AppProps) {
   const initialDate = new Date();
 
   const [text, setText] = useState("");
   const [timeLeft, setTimeLeft] = useState("");
   const [savedText, setSavedText] = useState("");
   const [justSaved, setJustSaved] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [currentDayKey, setCurrentDayKey] = useState(getLocalDayKey(initialDate));
-const [currentDateLabel, setCurrentDateLabel] = useState(formatFullDate(initialDate));
+  const [currentDateLabel, setCurrentDateLabel] = useState(formatFullDate(initialDate));
 
   const [pastEntries, setPastEntries] = useState<PastEntry[]>([]);
   const [selectedPastEntryId, setSelectedPastEntryId] = useState<string | null>(null);
@@ -107,6 +117,29 @@ const [currentDateLabel, setCurrentDateLabel] = useState(formatFullDate(initialD
     return () => clearInterval(interval);
   }, [currentDayKey, currentDateLabel, savedText]);
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (window.innerWidth > 900) return;
+
+    document.body.style.overflow = mobileMenuOpen ? "hidden" : "";
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
+
   const displayedText = isViewingPastEntry ? selectedPastEntry.content : text;
 
   const wordCount = useMemo(() => {
@@ -119,11 +152,8 @@ const [currentDateLabel, setCurrentDateLabel] = useState(formatFullDate(initialD
   const hasSavedText = trimmedSavedText.length > 0;
   const isDirty = text !== savedText;
 
-  const buttonLabel = justSaved
-    ? "Saved"
-    : isDirty && hasSavedText
-    ? "Save Edit"
-    : "Save";
+  const buttonLabel =
+    justSaved ? "Saved" : isDirty && hasSavedText ? "Save Edit" : "Save";
 
   const buttonIsAccent = isDirty && !justSaved;
   const buttonDisabled = !buttonIsAccent || isViewingPastEntry;
@@ -141,11 +171,23 @@ const [currentDateLabel, setCurrentDateLabel] = useState(formatFullDate(initialD
 
   const totalEntries = pastEntries.length + (savedText.trim() ? 1 : 0);
 
+  const goToToday = () => {
+    setSelectedPastEntryId(null);
+    setMobileMenuOpen(false);
+  };
+
+  const openPastEntry = (entryId: string) => {
+    setSelectedPastEntryId(entryId);
+    setMobileMenuOpen(false);
+  };
+
   return (
     <main className="app">
       <div className="shell">
         <aside className="sidebar">
-          <h1 className="journal-title">Journal</h1>
+          <h1 className="journal-title" onClick={handleSignOut}>
+            {journalName}
+          </h1>
 
           <div className="stats">
             <div className="stat">
@@ -162,7 +204,7 @@ const [currentDateLabel, setCurrentDateLabel] = useState(formatFullDate(initialD
           <button
             className={`today-card ${!isViewingPastEntry ? "today-card--active" : ""}`}
             type="button"
-            onClick={() => setSelectedPastEntryId(null)}
+            onClick={goToToday}
           >
             <div className="today-title">Today</div>
             <div className="today-subtitle">Write your daily entry</div>
@@ -184,10 +226,10 @@ const [currentDateLabel, setCurrentDateLabel] = useState(formatFullDate(initialD
                     className={`past-entry-button ${
                       selectedPastEntryId === entry.id ? "past-entry-button--active" : ""
                     }`}
-                    onClick={() => setSelectedPastEntryId(entry.id)}
+                    onClick={() => openPastEntry(entry.id)}
                   >
                     <div className="past-entry-date">{entry.dateLabel}</div>
-                    <div className="past-entry-text">{entry.content}</div>
+                    <div className="past-entry-preview">{entry.content}</div>
                   </button>
                 ))}
               </div>
@@ -196,6 +238,81 @@ const [currentDateLabel, setCurrentDateLabel] = useState(formatFullDate(initialD
         </aside>
 
         <section className="main">
+          <div className="mobile-topbar">
+            <button
+              type="button"
+              className={`mobile-menu-button ${mobileMenuOpen ? "mobile-menu-button--open" : ""}`}
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
+
+            <div className="mobile-journal-title">{journalName}</div>
+          </div>
+
+          <div className={`mobile-menu-overlay ${mobileMenuOpen ? "mobile-menu-overlay--open" : ""}`}>
+            <div className="mobile-menu-content">
+              <div className="stats">
+                <div className="stat">
+                  <div className="stat-number">0</div>
+                  <div className="stat-label">day streak</div>
+                </div>
+
+                <div className="stat">
+                  <div className="stat-number">{totalEntries}</div>
+                  <div className="stat-label">entries</div>
+                </div>
+              </div>
+
+              <button
+                className={`today-card ${!isViewingPastEntry ? "today-card--active" : ""}`}
+                type="button"
+                onClick={goToToday}
+              >
+                <div className="today-title">Today</div>
+                <div className="today-subtitle">Write your daily entry</div>
+              </button>
+
+              <div className="sidebar-divider" />
+
+              <div className="past-section">
+                <div className="past-title">Past Entries</div>
+
+                {pastEntries.length === 0 ? (
+                  <div className="past-text">Your past entries will appear here</div>
+                ) : (
+                  <div className="past-entry-list">
+                    {pastEntries.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        className={`past-entry-button ${
+                          selectedPastEntryId === entry.id ? "past-entry-button--active" : ""
+                        }`}
+                        onClick={() => openPastEntry(entry.id)}
+                      >
+                        <div className="past-entry-date">{entry.dateLabel}</div>
+                        <div className="past-entry-preview">{entry.content}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="mobile-signout"
+                onClick={handleSignOut}
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+
           <div className="main-inner">
             <div className="main-top">
               <div className="greeting">

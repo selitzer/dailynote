@@ -35,3 +35,25 @@ input,
 textarea {
   font: inherit;
 }
+
+.app-loader {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #171717;
+}
+
+.app-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #343434;
+  border-top-color: #d3d3d3;
+  border-radius: 50%;
+  animation: app-spin 0.75s linear infinite;
+}
+
+@keyframes app-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
