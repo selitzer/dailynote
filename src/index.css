@@ -1,17 +1,20 @@
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap');
+
 :root {
-  font-family: "Courier New", Courier, monospace;
+  font-family: "IBM Plex Sans", sans-serif;
   color: #f2f2f2;
   background: #171717;
 }
 
 ::selection {
-  background: #d94d28;
-  color: #ffffff;
+ background: #b3b3b3;
+    color: #000000;
 }
 
 ::-moz-selection {
-  background: #d94d28;
-  color: #ffffff;
+  background: #b3b3b3;
+    color: #000000;
 }
 
 * {

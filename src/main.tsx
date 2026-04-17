@@ -147,7 +147,13 @@ function RootApp() {
     );
   }
 
-  return <App journalName={profile.journal_name} />;
+return (
+  <App
+    userId={session.user.id}
+    journalName={profile.journal_name}
+    fullName={profile?.full_name ?? fullName}
+  />
+);
 }
 
 createRoot(document.getElementById("root")!).render(
