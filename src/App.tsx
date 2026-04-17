@@ -21,12 +21,16 @@ type AppProps = {
   userId: string;
   journalName: string;
   fullName: string;
+  onJournalNameUpdated?: (nextName: string) => void;
 };
 
 async function handleSignOut() {
   await supabase.auth.signOut();
 }
 
+function getMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
 function getDateFromDayKey(dayKey: string) {
   return new Date(`${dayKey}T12:00:00`);
 }
@@ -37,7 +41,11 @@ function getLocalDayKey(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
-
+function formatMonthLabel(date: Date) {
+  return date.toLocaleDateString(undefined, {
+    month: "long",
+  });
+}
 function formatFullDate(date: Date) {
   return date.toLocaleDateString(undefined, {
     weekday: "long",
@@ -55,12 +63,16 @@ function formatShortDate(date: Date) {
   });
 }
 
-function App({ userId, journalName, fullName }: AppProps) {
+function App({ userId, journalName, fullName, onJournalNameUpdated }: AppProps) {
   const initialDate = new Date();
 
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [savingEntry, setSavingEntry] = useState(false);
+
+  const [renameJournalOpen, setRenameJournalOpen] = useState(false);
+const [renameJournalValue, setRenameJournalValue] = useState(journalName);
+const [updatingJournalName, setUpdatingJournalName] = useState(false);
 
   const [text, setText] = useState("");
   const [timeLeft, setTimeLeft] = useState("");
@@ -70,12 +82,31 @@ function App({ userId, journalName, fullName }: AppProps) {
 
   const [currentDayKey, setCurrentDayKey] = useState(getLocalDayKey(initialDate));
   const [currentDateLabel, setCurrentDateLabel] = useState(formatFullDate(initialDate));
-
+const [selectedPastMonth, setSelectedPastMonth] = useState<string | null>(null);
  
   const [selectedPastEntryId, setSelectedPastEntryId] = useState<string | null>(null);
 
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement | null>(null);
+const desktopProfileMenuRef = useRef<HTMLDivElement | null>(null);
+const mobileProfileMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const [pastMonthMenuOpen, setPastMonthMenuOpen] = useState(false);
+  const [selectedPastDay, setSelectedPastDay] = useState<number | null>(null);
+const [pastDayMenuOpen, setPastDayMenuOpen] = useState(false);
+
+  const [pastFilterMenuOpen, setPastFilterMenuOpen] = useState(false);
+const [selectedPastFilter, setSelectedPastFilter] = useState("Most Recent");
+const desktopPastFilterMenuRef = useRef<HTMLDivElement | null>(null);
+const mobilePastFilterMenuRef = useRef<HTMLDivElement | null>(null);
+
+const monthFilterActive = selectedPastMonth !== null;
+const dayFilterActive = selectedPastDay !== null;
+
+const [journalMenuOpen, setJournalMenuOpen] = useState(false);
+const desktopJournalMenuRef = useRef<HTMLDivElement | null>(null);
+const mobileJournalMenuRef = useRef<HTMLDivElement | null>(null);
+
+const [currentJournalName, setCurrentJournalName] = useState(journalName);
 
 const archivedEntries = useMemo<PastEntry[]>(() => {
   return entries
@@ -88,11 +119,166 @@ const archivedEntries = useMemo<PastEntry[]>(() => {
     }));
 }, [entries, currentDayKey]);
 
+const dayOptions = useMemo(() => {
+  return Array.from({ length: 31 }, (_, index) => index + 1);
+}, []);
+
+const monthOptions = useMemo(() => {
+  const now = new Date();
+  const year = now.getFullYear();
+
+  return Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(year, index, 1);
+    return {
+      key: getMonthKey(date),
+      label: formatMonthLabel(date),
+    };
+  })
+}, []);
+
 const selectedPastEntry = useMemo(() => {
   return archivedEntries.find((entry) => entry.id === selectedPastEntryId) ?? null;
 }, [archivedEntries, selectedPastEntryId]);
 
+const activeMonthKey = selectedPastMonth;
+
+const activeDayValue = selectedPastDay;
+
+const filteredArchivedEntries = useMemo(() => {
+  return archivedEntries.filter((entry) => {
+    const entryDate = getDateFromDayKey(entry.dateKey);
+
+    const matchesMonth = activeMonthKey
+      ? entry.dateKey.startsWith(activeMonthKey)
+      : true;
+
+    const matchesDay = activeDayValue
+      ? entryDate.getDate() === activeDayValue
+      : true;
+
+    return matchesMonth && matchesDay;
+  });
+}, [archivedEntries, activeMonthKey, activeDayValue]);
+
+const selectedMonthLabel =
+  activeMonthKey
+    ? monthOptions.find((month) => month.key === activeMonthKey)?.label ??
+      formatMonthLabel(new Date(`${activeMonthKey}-01T12:00:00`))
+    : "-";
+
+const selectedDayLabel = activeDayValue ? String(activeDayValue) : "-";
+
+const hasMonthFilter = activeMonthKey !== null;
+const hasDayFilter = activeDayValue !== null;
+
+const pastFilterButtonLabel =
+  hasMonthFilter && hasDayFilter
+    ? `${selectedMonthLabel} ${selectedDayLabel}`
+    : hasMonthFilter
+    ? selectedMonthLabel
+    : hasDayFilter
+    ? selectedDayLabel
+    : "Filter";
+
   const isViewingPastEntry = selectedPastEntry !== null;
+const renameJournalIsValid =
+  renameJournalValue.length > 0 && renameJournalValue.length <= 40;
+const handleRenameJournal = async () => {
+  const nextName = renameJournalValue;
+
+  if (!renameJournalIsValid || updatingJournalName) return;
+
+  if (nextName === currentJournalName) {
+    setRenameJournalOpen(false);
+    return;
+  }
+
+  setUpdatingJournalName(true);
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ journal_name: nextName })
+    .eq("id", userId);
+
+  setUpdatingJournalName(false);
+
+  if (error) {
+    console.error("Update journal name error:", error.message);
+    return;
+  }
+
+  setCurrentJournalName(nextName);
+  onJournalNameUpdated?.(nextName);
+  setRenameJournalOpen(false);
+};
+
+
+useEffect(() => {
+  if (!renameJournalOpen) return;
+
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setRenameJournalOpen(false);
+      setRenameJournalValue(currentJournalName);
+    }
+  };
+
+  document.addEventListener("keydown", handleEscape);
+  return () => document.removeEventListener("keydown", handleEscape);
+}, [renameJournalOpen, currentJournalName]);
+
+useEffect(() => {
+  if (!journalMenuOpen) return;
+
+  const handlePointerDown = (e: MouseEvent) => {
+    const target = e.target as Node;
+
+    const clickedDesktop =
+      desktopJournalMenuRef.current?.contains(target) ?? false;
+
+    const clickedMobile =
+      mobileJournalMenuRef.current?.contains(target) ?? false;
+
+    if (!clickedDesktop && !clickedMobile) {
+      setJournalMenuOpen(false);
+    }
+  };
+
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setJournalMenuOpen(false);
+    }
+  };
+
+  document.addEventListener("mousedown", handlePointerDown);
+  document.addEventListener("keydown", handleEscape);
+
+  return () => {
+    document.removeEventListener("mousedown", handlePointerDown);
+    document.removeEventListener("keydown", handleEscape);
+  };
+}, [journalMenuOpen]);
+
+useEffect(() => {
+  setCurrentJournalName(journalName);
+  setRenameJournalValue(journalName);
+}, [journalName]);
+
+useEffect(() => {
+  if (selectedPastFilter !== "By Day") {
+    setPastDayMenuOpen(false);
+  }
+}, [selectedPastFilter]);
+
+useEffect(() => {
+  if (!selectedPastEntryId) return;
+
+  const stillVisible = filteredArchivedEntries.some((entry) => entry.id === selectedPastEntryId);
+
+  if (!stillVisible) {
+    setSelectedPastEntryId(null);
+  }
+}, [filteredArchivedEntries, selectedPastEntryId]);
 
 useEffect(() => {
   const updateTimer = () => {
@@ -151,8 +337,15 @@ useEffect(() => {
   if (!profileMenuOpen) return;
 
   const handlePointerDown = (e: MouseEvent) => {
-    if (!profileMenuRef.current) return;
-    if (!profileMenuRef.current.contains(e.target as Node)) {
+    const target = e.target as Node;
+
+    const clickedDesktop =
+      desktopProfileMenuRef.current?.contains(target) ?? false;
+
+    const clickedMobile =
+      mobileProfileMenuRef.current?.contains(target) ?? false;
+
+    if (!clickedDesktop && !clickedMobile) {
       setProfileMenuOpen(false);
     }
   };
@@ -171,6 +364,38 @@ useEffect(() => {
     document.removeEventListener("keydown", handleEscape);
   };
 }, [profileMenuOpen]);
+
+useEffect(() => {
+  if (!pastFilterMenuOpen) return;
+
+  const handlePointerDown = (e: MouseEvent) => {
+    const target = e.target as Node;
+
+    const clickedDesktop =
+      desktopPastFilterMenuRef.current?.contains(target) ?? false;
+
+    const clickedMobile =
+      mobilePastFilterMenuRef.current?.contains(target) ?? false;
+
+    if (!clickedDesktop && !clickedMobile) {
+      setPastFilterMenuOpen(false);
+    }
+  };
+
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setPastFilterMenuOpen(false);
+    }
+  };
+
+  document.addEventListener("mousedown", handlePointerDown);
+  document.addEventListener("keydown", handleEscape);
+
+  return () => {
+    document.removeEventListener("mousedown", handlePointerDown);
+    document.removeEventListener("keydown", handleEscape);
+  };
+}, [pastFilterMenuOpen]);
 
 async function loadEntries() {
   setEntriesLoading(true);
@@ -199,7 +424,11 @@ async function loadEntries() {
 
   setEntriesLoading(false);
 }
-
+useEffect(() => {
+  if (selectedPastFilter !== "By Month") {
+    setPastMonthMenuOpen(false);
+  }
+}, [selectedPastFilter]);
 
 useEffect(() => {
   loadEntries();
@@ -309,9 +538,76 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
     <main className="app">
       <div className="shell">
         <aside className="sidebar">
-          <h1 className="journal-title">
-            {journalName}
-          </h1>
+<div className="journal-title-wrap" ref={desktopJournalMenuRef}>
+  <button
+    type="button"
+    className="journal-title-button"
+    onClick={() => setJournalMenuOpen((prev) => !prev)}
+    aria-expanded={journalMenuOpen}
+    aria-haspopup="menu"
+  >
+<span className="journal-title-text">{currentJournalName}</span>
+
+    <span
+      className={`journal-title-chevron ${
+        journalMenuOpen ? "journal-title-chevron--open" : ""
+      }`}
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 16 16" fill="none">
+        <path
+          d="M3 6L8 11L13 6"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  </button>
+
+  <div className={`journal-menu ${journalMenuOpen ? "journal-menu--open" : ""}`}>
+    <button
+      type="button"
+      className="journal-menu-item"
+      onClick={() => {
+        setJournalMenuOpen(false);
+      }}
+    >
+      <span className="journal-menu-item-icon" aria-hidden="true">
+  <svg viewBox="0 0 512 512" fill="currentColor">
+    <path d="m344.667 276c0-11.046 8.954-20 20-20h19.333c11.046 0 20 8.954 20 20s-8.954 20-20 20h-19.333c-11.046 0-20-8.954-20-20zm167.333-116.517v194.85c0 30.707-11.958 59.576-33.671 81.289l-42.707 42.707c-21.713 21.713-50.582 33.671-81.289 33.671h-234.183c-32.094 0-62.266-12.498-84.959-35.191s-35.191-52.866-35.191-84.959v-232.367c0-65.706 52.609-118.992 118-120.131v-19.352c0-11.046 8.954-20 20-20s20 8.954 20 20v19.333h196v-19.333c0-11.046 8.954-20 20-20s20 8.954 20 20v19.352c65.421 1.139 118 54.459 118 120.131zm-471.972-2.15h431.943c-1.124-42.968-35.795-76.868-77.972-77.972v19.305c0 11.046-8.954 20-20 20s-20-8.954-20-20v-19.333h-195.999v19.333c0 11.046-8.954 20-20 20s-20-8.954-20-20v-19.305c-42.973 1.126-76.868 35.801-77.972 77.972zm429.289 217h-54.984c-22.056 0-40 17.944-40 40v54.984c12.362-3.4 23.692-9.96 33.004-19.272l42.707-42.707c9.312-9.312 15.873-20.643 19.273-33.005zm2.683-177h-432v194.517c0 21.409 8.337 41.537 23.476 56.675 15.138 15.138 35.265 23.475 56.674 23.475h214.183v-57.667c0-44.112 35.888-80 80-80h57.667zm-344 197.334h19.333c11.046 0 20-8.954 20-20s-8.954-20-20-20h-19.333c-11.046 0-20 8.954-20 20s8.954 20 20 20zm118.333-98.667h19.333c11.046 0 20-8.954 20-20s-8.954-20-20-20h-19.333c-11.046 0-20 8.954-20 20s8.955 20 20 20zm-118.333 0h19.333c11.046 0 20-8.954 20-20s-8.954-20-20-20h-19.333c-11.046 0-20 8.954-20 20s8.954 20 20 20zm118.333 98.667h19.333c11.046 0 20-8.954 20-20s-8.954-20-20-20h-19.333c-11.046 0-20 8.954-20 20s8.955 20 20 20z"></path>
+  </svg>
+      </span>
+
+      <span>View calendar</span>
+    </button>
+
+    <button
+      type="button"
+      className="journal-menu-item"
+onClick={() => {
+  setJournalMenuOpen(false);
+  setMobileMenuOpen(false);
+  setRenameJournalValue(currentJournalName);
+  setRenameJournalOpen(true);
+}}
+    >
+      <span className="journal-menu-item-icon" aria-hidden="true">
+     <svg
+  id="fi_2040536"
+  viewBox="0 0 512.015 512.015"
+  fill="currentColor"
+  aria-hidden="true"
+>
+  <path d="m512 256.015v107.628c0 37.396-14.563 72.553-41.006 98.995-4.217 2.976-38.981 49.377-107.366 49.377h-215.256c-68.378 0-103.106-46.371-107.367-49.377-26.443-26.443-41.005-61.599-41.005-98.995v-215.256c0-37.396 14.562-72.552 41.005-98.995 4.212-2.972 38.981-49.377 107.367-49.377h107.628c11.046 0 20 8.954 20 20s-8.954 20-20 20h-107.628c-50.105 0-74.848 34.617-79.083 37.662-18.887 18.887-29.289 43.999-29.289 70.71v215.256c0 26.711 10.402 51.823 29.289 70.71 4.382 3.151 28.708 37.662 79.083 37.662h215.256c50.109 0 74.847-34.615 79.082-37.661 18.888-18.888 29.29-44 29.29-70.711v-107.628c0-11.046 8.954-20 20-20s20 8.954 20 20zm-388.142-14.142 222.094-222.094c26.374-26.373 69.059-26.37 95.43 0l50.854 50.854c26.373 26.373 26.37 69.06-.001 95.431l-222.919 222.918c-3.736 3.737-8.8 5.843-14.084 5.858l-117.175.334c-.019 0-.038 0-.057 0-11.042 0-20-8.959-20-20v-119.159c0-5.304 2.107-10.391 5.858-14.142zm219.426-162.858 89.716 89.716 30.952-30.952c10.739-10.74 10.739-28.122 0-38.862l-50.854-50.854c-10.74-10.741-28.124-10.738-38.862 0zm-185.284 276.102 88.867-.253 157.849-157.849-89.716-89.716-157 157z"></path>
+</svg>
+      </span>
+
+      <span>Change name</span>
+    </button>
+  </div>
+</div>
 
           <div className="stats">
             <div className="stat">
@@ -337,13 +633,236 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
           <div className="sidebar-divider" />
 
           <div className="past-section">
-            <div className="past-title">Past Entries</div>
+<div className="past-header">
+  <div className="past-title">Past Entries</div>
 
-              {archivedEntries.length === 0 ? (
-                <div className="past-text">Your past entries will appear here</div>
+  <div className="past-filter-wrap" ref={desktopPastFilterMenuRef}>
+<button
+  type="button"
+  className={`past-filter-button ${pastFilterMenuOpen ? "past-filter-button--open" : ""}`}
+  aria-expanded={pastFilterMenuOpen}
+  onClick={() => {
+    setPastFilterMenuOpen((prev) => {
+      const nextOpen = !prev;
+
+    if (nextOpen) {
+  setPastMonthMenuOpen(false);
+  setPastDayMenuOpen(false);
+}
+
+      return nextOpen;
+    });
+  }}
+>
+  <span className="past-filter-button-label">{pastFilterButtonLabel}</span>
+
+<span className="past-filter-icon">
+  <svg
+    viewBox="0 0 512.023 512.023"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="m492.012 0h-472c-11.046 0-20 8.954-20 20 0 80.598 40.06 155.371 107.159 200.02 43.94 29.239 70.174 78.206 70.174 130.985v62.328c0 19.354 10.334 37.521 26.97 47.412l78.019 46.39c22.981 13.662 52.346-2.925 52.346-29.777v-126.353c0-52.779 26.233-101.746 70.175-130.985 67.097-44.649 107.157-119.423 107.157-200.02 0-11.046-8.954-20-20-20zm-109.32 186.719c-55.111 36.673-88.014 98.088-88.014 164.286v116.935l-69.921-41.575c-4.572-2.719-7.413-7.712-7.413-13.031v-62.328c0-66.198-32.903-127.614-88.015-164.286-50.333-33.493-82.411-87.319-88.325-146.72h430.016c-5.915 59.402-37.994 113.227-88.328 146.719z"/>
+  </svg>
+</span>
+</button>
+
+<div className={`past-filter-menu ${pastFilterMenuOpen ? "past-filter-menu--open" : ""}`} role="menu">
+  {["By Month", "By Day", "Most Recent"].map((option) => {
+    const isActive =
+  option === "By Month"
+    ? monthFilterActive
+    : option === "By Day"
+    ? dayFilterActive
+    : !monthFilterActive && !dayFilterActive;
+
+    return (
+      <div key={option} className="past-filter-menu-group">
+        <button
+          type="button"
+          className={`past-filter-menu-item ${isActive ? "past-filter-menu-item--active" : ""}`}
+          role="menuitem"
+onClick={() => {
+  if (option === "By Month") {
+    if (selectedPastFilter === "By Month") {
+      setSelectedPastMonth(null);
+      setSelectedPastFilter("Most Recent");
+      setPastMonthMenuOpen(false);
+      setSelectedPastEntryId(null);
+      return;
+    }
+
+    setSelectedPastFilter("By Month");
+    setPastMonthMenuOpen(false);
+    setPastDayMenuOpen(false);
+    return;
+  }
+
+  if (option === "By Day") {
+    if (selectedPastFilter === "By Day") {
+      setSelectedPastDay(null);
+      setSelectedPastFilter("Most Recent");
+      setPastDayMenuOpen(false);
+      setSelectedPastEntryId(null);
+      return;
+    }
+
+    setSelectedPastFilter("By Day");
+    setPastDayMenuOpen(false);
+    setPastMonthMenuOpen(false);
+    return;
+  }
+
+  setSelectedPastFilter("Most Recent");
+  setSelectedPastMonth(null);
+  setSelectedPastDay(null);
+  setPastMonthMenuOpen(false);
+  setPastDayMenuOpen(false);
+  setPastFilterMenuOpen(false);
+  setSelectedPastEntryId(null);
+}}
+        >
+          <span>{option}</span>
+
+{(option === "By Month" || option === "By Day") && (
+  <span className="past-filter-menu-item-arrow" aria-hidden="true">
+    <svg viewBox="0 0 16 16" fill="none">
+      <path
+        d="M6 3L11 8L6 13"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  </span>
+)}
+        </button>
+
+{option === "By Month" && (monthFilterActive || selectedPastFilter === "By Month") && (
+  <div className="past-filter-submenu">
+<button
+  type="button"
+  className={`past-filter-submenu-trigger ${
+    pastMonthMenuOpen ? "past-filter-submenu-trigger--open" : ""
+  }`}
+  onClick={() => {
+    setPastMonthMenuOpen((prev) => !prev);
+  }}
+>
+     <span>{selectedMonthLabel}</span>
+
+      <span
+        className={`past-filter-submenu-chevron ${
+          pastMonthMenuOpen ? "past-filter-submenu-chevron--open" : ""
+        }`}
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M3 6L8 11L13 6"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    </button>
+
+    {pastMonthMenuOpen && (
+      <div className="past-filter-submenu-options">
+        {monthOptions.map((month) => (
+          <button
+            key={month.key}
+            type="button"
+            className={`past-filter-submenu-item ${
+              activeMonthKey === month.key ? "past-filter-submenu-item--active" : ""
+            }`}
+            onClick={() => {
+              setSelectedPastMonth(month.key);
+              setPastMonthMenuOpen(false);
+              setPastFilterMenuOpen(false);
+              setSelectedPastEntryId(null);
+            }}
+          >
+            {month.label}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+)}
+{option === "By Day" && (dayFilterActive || selectedPastFilter === "By Day") && (
+  <div className="past-filter-submenu">
+    <button
+      type="button"
+      className={`past-filter-submenu-trigger ${
+        pastDayMenuOpen ? "past-filter-submenu-trigger--open" : ""
+      }`}
+      onClick={() => {
+        setPastDayMenuOpen((prev) => !prev);
+      }}
+    >
+      <span>{selectedDayLabel}</span>
+
+      <span
+        className={`past-filter-submenu-chevron ${
+          pastDayMenuOpen ? "past-filter-submenu-chevron--open" : ""
+        }`}
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M3 6L8 11L13 6"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    </button>
+
+    {pastDayMenuOpen && (
+      <div className="past-filter-submenu-options">
+        {dayOptions.map((day) => (
+          <button
+            key={day}
+            type="button"
+            className={`past-filter-submenu-item ${
+              activeDayValue === day ? "past-filter-submenu-item--active" : ""
+            }`}
+            onClick={() => {
+              setSelectedPastDay(day);
+              setPastDayMenuOpen(false);
+              setPastFilterMenuOpen(false);
+              setSelectedPastEntryId(null);
+            }}
+          >
+            {day}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+)}
+      </div>
+    );
+  })}
+</div>
+  </div>
+</div>
+
+              {filteredArchivedEntries.length === 0 ? (
+                <div className="past-text">
+  {archivedEntries.length === 0
+    ? "Your past entries will appear here"
+    : "No entries found for this filter"}
+</div>
               ) : (
                 <div className="past-entry-list">
-                  {archivedEntries.map((entry) => (
+                  {filteredArchivedEntries.map((entry) => (
                   <button
                     key={entry.id}
                     type="button"
@@ -369,80 +888,42 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
   />
 )}
 
-<div className="sidebar-bottom" ref={profileMenuRef}>
+<div className="sidebar-bottom" ref={desktopProfileMenuRef}>
   <div className="sidebar-divider--bottom" />
 
   <div className={`profile-menu ${profileMenuOpen ? "profile-menu--open" : ""}`}>
     <button type="button" className="profile-menu-item">
-      <span className="profile-menu-item-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path
-            d="M5 6.5C5 5.67157 5.67157 5 6.5 5H10.25C10.6642 5 11 5.33579 11 5.75V18.25C11 18.6642 10.6642 19 10.25 19H6.5C5.67157 19 5 18.3284 5 17.5V6.5Z"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          />
-          <path
-            d="M13 5.75C13 5.33579 13.3358 5 13.75 5H17.5C18.3284 5 19 5.67157 19 6.5V17.5C19 18.3284 18.3284 19 17.5 19H13.75C13.3358 19 13 18.6642 13 18.25V5.75Z"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          />
-        </svg>
-      </span>
+<span className="profile-menu-item-icon" aria-hidden="true">
+  <svg viewBox="0 0 512.5 512.5" fill="currentColor">
+    <path d="m413.583 393.333c0 11.046-8.954 20-20 20h-78.666c-11.046 0-20-8.954-20-20s8.954-20 20-20h78.666c11.046 0 20 8.955 20 20zm98.667-234.666v273.833c0 44.112-35.888 80-80 80h-352c-44.112 0-80-35.888-80-80v-352.5c0-44.112 35.888-80 80-80h72.48c21.368 0 41.458 8.321 56.568 23.431l55.235 55.235h167.717c44.112.001 80 35.888 80 80.001zm-40 0c0-22.056-17.944-40-40-40h-176c-5.305 0-10.392-2.107-14.143-5.858l-61.093-61.093c-7.554-7.555-17.599-11.716-28.284-11.716h-72.48c-22.056 0-40 17.944-40 40v352.5c0 22.056 17.944 40 40 40h352c22.056 0 40-17.944 40-40z"></path>
+  </svg>
+</span>
       <span>Past journals</span>
     </button>
 
-    <button type="button" className="profile-menu-item">
-      <span className="profile-menu-item-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path
-            d="M12 8.75A3.25 3.25 0 1 0 12 15.25A3.25 3.25 0 0 0 12 8.75Z"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          />
-          <path
-            d="M19.4 13.5C19.4667 13.0067 19.5 12.5067 19.5 12C19.5 11.4933 19.4667 10.9933 19.4 10.5L21 9.25L19.25 6.25L17.35 7C16.5833 6.4 15.7167 5.91667 14.75 5.55L14.5 3.5H9.5L9.25 5.55C8.28333 5.91667 7.41667 6.4 6.65 7L4.75 6.25L3 9.25L4.6 10.5C4.53333 10.9933 4.5 11.4933 4.5 12C4.5 12.5067 4.53333 13.0067 4.6 13.5L3 14.75L4.75 17.75L6.65 17C7.41667 17.6 8.28333 18.0833 9.25 18.45L9.5 20.5H14.5L14.75 18.45C15.7167 18.0833 16.5833 17.6 17.35 17L19.25 17.75L21 14.75L19.4 13.5Z"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </span>
-      <span>Profile settings</span>
-    </button>
+<button type="button" className="profile-menu-item">
+  <span className="profile-menu-item-icon" aria-hidden="true">
+    <svg viewBox="0 0 512 512" fill="currentColor">
+      <path d="M489.514 296.695l-21.3-17.534c-14.59-12.011-14.564-34.335.001-46.322l21.299-17.534c15.157-12.479 19.034-33.877 9.218-50.882l-42.058-72.846c-9.818-17.004-30.292-24.344-48.674-17.458l-25.835 9.679c-17.696 6.628-37.016-4.551-40.117-23.161l-4.535-27.214c-3.228-19.366-19.821-33.423-39.455-33.423h-84.115c-19.635 0-36.229 14.057-39.456 33.424l-4.536 27.213c-3.107 18.643-22.453 29.778-40.116 23.162l-25.835-9.68c-18.383-6.886-38.855.455-48.674 17.458l-42.057 72.845c-9.817 17.003-5.941 38.402 9.218 50.882l21.299 17.534c14.592 12.012 14.563 34.334 0 46.322l-21.3 17.534c-15.158 12.48-19.035 33.879-9.218 50.882l42.058 72.846c9.818 17.003 30.286 24.344 48.674 17.458l25.834-9.679c17.699-6.631 37.015 4.556 40.116 23.161l4.536 27.212c3.228 19.369 19.822 33.426 39.456 33.426h84.115c19.634 0 36.228-14.057 39.455-33.424l4.535-27.212c3.106-18.638 22.451-29.781 40.117-23.161l25.836 9.678c18.387 6.887 38.856-.454 48.674-17.458l42.059-72.847c9.815-17.003 5.938-38.402-9.219-50.881zm-67.481 103.728l-25.835-9.679c-41.299-15.471-86.37 10.63-93.605 54.043l-4.535 27.213h-84.115l-4.536-27.213c-7.249-43.497-52.386-69.484-93.605-54.043l-25.835 9.679-42.057-72.846 21.299-17.534c34.049-28.03 33.978-80.114 0-108.086l-21.299-17.534 42.058-72.846 25.834 9.679c41.3 15.47 86.37-10.63 93.605-54.043l4.535-27.213h84.115l4.535 27.213c7.25 43.502 52.389 69.481 93.605 54.043l25.835-9.679 42.067 72.836s-.003.003-.011.009l-21.298 17.534c-34.048 28.028-33.98 80.113-.001 108.086l21.3 17.534zm-166.033-243.09c-54.405 0-98.667 44.262-98.667 98.667s44.262 98.667 98.667 98.667 98.667-44.262 98.667-98.667-44.262-98.667-98.667-98.667zm0 157.334c-32.349 0-58.667-26.318-58.667-58.667s26.318-58.667 58.667-58.667 58.667 26.318 58.667 58.667-26.318 58.667-58.667 58.667z" />
+    </svg>
+  </span>
+  <span>Profile settings</span>
+</button>
 
     <div className="profile-menu-divider" />
 
-    <button
-      type="button"
-      className="profile-menu-item profile-menu-item--danger"
-      onClick={handleSignOut}
-    >
-      <span className="profile-menu-item-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path
-            d="M10 7V5.75C10 4.7835 10.7835 4 11.75 4H18.25C19.2165 4 20 4.7835 20 5.75V18.25C20 19.2165 19.2165 20 18.25 20H11.75C10.7835 20 10 19.2165 10 18.25V17"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-          <path
-            d="M4 12H14.5"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-          <path
-            d="M11.5 8.5L15 12L11.5 15.5"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </span>
-      <span>Log out</span>
-    </button>
+<button
+  type="button"
+  className="profile-menu-item profile-menu-item--danger"
+  onClick={handleSignOut}
+>
+  <span className="profile-menu-item-icon" aria-hidden="true">
+    <svg viewBox="0 0 512.473 512.473" fill="currentColor">
+      <path d="m512.236 276.474v155.999c0 44.112-35.888 80-80 80h-352c-44.112 0-80-35.888-80-80v-155.999c0-44.112 35.888-80 80-80h58c11.046 0 20 8.954 20 20s-8.954 20-20 20h-58c-22.056 0-40 17.944-40 40v155.999c0 22.056 17.944 40 40 40h352c22.056 0 40-17.944 40-40v-155.999c0-22.056-17.944-40-40-40h-58c-11.046 0-20-8.954-20-20s8.954-20 20-20h58c44.113 0 80 35.887 80 80zm-352.875-156.43c71.479-70.82 68.571-70.054 76.645-74.712l.465 328.668c.016 11.036 8.967 19.972 20 19.972h.029c11.046-.016 19.987-8.982 19.972-20.028l-.465-328.607c8.058 4.651 5.064 3.793 77.105 75.175 7.81 7.81 20.473 7.811 28.284 0s7.811-20.474 0-28.284l-68.826-68.824c-31.028-31.028-81.754-31.383-113.137 0l-68.356 68.356c-7.811 7.811-7.811 20.474 0 28.284s20.474 7.811 28.284 0z" />
+    </svg>
+  </span>
+  <span>Log out</span>
+</button>
   </div>
 
   <button
@@ -492,7 +973,76 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
               <span />
             </button>
 
-            <div className="mobile-journal-title">{journalName}</div>
+    <div className="mobile-journal-title-wrap" ref={mobileJournalMenuRef}>
+  <button
+    type="button"
+    className="mobile-journal-title-button"
+    onClick={() => setJournalMenuOpen((prev) => !prev)}
+    aria-expanded={journalMenuOpen}
+    aria-haspopup="menu"
+  >
+    <span className="mobile-journal-title">{currentJournalName}</span>
+
+    <span
+      className={`journal-title-chevron ${
+        journalMenuOpen ? "journal-title-chevron--open" : ""
+      }`}
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 16 16" fill="none">
+        <path
+          d="M3 6L8 11L13 6"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  </button>
+
+  <div className={`journal-menu ${journalMenuOpen ? "journal-menu--open" : ""}`}>
+    <button
+      type="button"
+      className="journal-menu-item"
+      onClick={() => {
+        setJournalMenuOpen(false);
+      }}
+    >
+      <span className="journal-menu-item-icon" aria-hidden="true">
+  <svg viewBox="0 0 512 512" fill="currentColor">
+    <path d="m344.667 276c0-11.046 8.954-20 20-20h19.333c11.046 0 20 8.954 20 20s-8.954 20-20 20h-19.333c-11.046 0-20-8.954-20-20zm167.333-116.517v194.85c0 30.707-11.958 59.576-33.671 81.289l-42.707 42.707c-21.713 21.713-50.582 33.671-81.289 33.671h-234.183c-32.094 0-62.266-12.498-84.959-35.191s-35.191-52.866-35.191-84.959v-232.367c0-65.706 52.609-118.992 118-120.131v-19.352c0-11.046 8.954-20 20-20s20 8.954 20 20v19.333h196v-19.333c0-11.046 8.954-20 20-20s20 8.954 20 20v19.352c65.421 1.139 118 54.459 118 120.131zm-471.972-2.15h431.943c-1.124-42.968-35.795-76.868-77.972-77.972v19.305c0 11.046-8.954 20-20 20s-20-8.954-20-20v-19.333h-195.999v19.333c0 11.046-8.954 20-20 20s-20-8.954-20-20v-19.305c-42.973 1.126-76.868 35.801-77.972 77.972zm429.289 217h-54.984c-22.056 0-40 17.944-40 40v54.984c12.362-3.4 23.692-9.96 33.004-19.272l42.707-42.707c9.312-9.312 15.873-20.643 19.273-33.005zm2.683-177h-432v194.517c0 21.409 8.337 41.537 23.476 56.675 15.138 15.138 35.265 23.475 56.674 23.475h214.183v-57.667c0-44.112 35.888-80 80-80h57.667zm-344 197.334h19.333c11.046 0 20-8.954 20-20s-8.954-20-20-20h-19.333c-11.046 0-20 8.954-20 20s8.954 20 20 20zm118.333-98.667h19.333c11.046 0 20-8.954 20-20s-8.954-20-20-20h-19.333c-11.046 0-20 8.954-20 20s8.955 20 20 20zm-118.333 0h19.333c11.046 0 20-8.954 20-20s-8.954-20-20-20h-19.333c-11.046 0-20 8.954-20 20s8.954 20 20 20zm118.333 98.667h19.333c11.046 0 20-8.954 20-20s-8.954-20-20-20h-19.333c-11.046 0-20 8.954-20 20s8.955 20 20 20z"></path>
+  </svg>
+      </span>
+
+      <span>View calendar</span>
+    </button>
+
+    <button
+      type="button"
+      className="journal-menu-item"
+onClick={() => {
+  setJournalMenuOpen(false);
+  setMobileMenuOpen(false);
+  setRenameJournalValue(currentJournalName);
+  setRenameJournalOpen(true);
+}}
+    >
+      <span className="journal-menu-item-icon" aria-hidden="true">
+<svg
+  id="fi_2040536"
+  viewBox="0 0 512.015 512.015"
+  fill="currentColor"
+  aria-hidden="true"
+>
+  <path d="m512 256.015v107.628c0 37.396-14.563 72.553-41.006 98.995-4.217 2.976-38.981 49.377-107.366 49.377h-215.256c-68.378 0-103.106-46.371-107.367-49.377-26.443-26.443-41.005-61.599-41.005-98.995v-215.256c0-37.396 14.562-72.552 41.005-98.995 4.212-2.972 38.981-49.377 107.367-49.377h107.628c11.046 0 20 8.954 20 20s-8.954 20-20 20h-107.628c-50.105 0-74.848 34.617-79.083 37.662-18.887 18.887-29.289 43.999-29.289 70.71v215.256c0 26.711 10.402 51.823 29.289 70.71 4.382 3.151 28.708 37.662 79.083 37.662h215.256c50.109 0 74.847-34.615 79.082-37.661 18.888-18.888 29.29-44 29.29-70.711v-107.628c0-11.046 8.954-20 20-20s20 8.954 20 20zm-388.142-14.142 222.094-222.094c26.374-26.373 69.059-26.37 95.43 0l50.854 50.854c26.373 26.373 26.37 69.06-.001 95.431l-222.919 222.918c-3.736 3.737-8.8 5.843-14.084 5.858l-117.175.334c-.019 0-.038 0-.057 0-11.042 0-20-8.959-20-20v-119.159c0-5.304 2.107-10.391 5.858-14.142zm219.426-162.858 89.716 89.716 30.952-30.952c10.739-10.74 10.739-28.122 0-38.862l-50.854-50.854c-10.74-10.741-28.124-10.738-38.862 0zm-185.284 276.102 88.867-.253 157.849-157.849-89.716-89.716-157 157z"></path>
+</svg>
+      </span>
+
+      <span>Change name</span>
+    </button>
+  </div>
+</div>
           </div>
 
           <div className={`mobile-menu-overlay ${mobileMenuOpen ? "mobile-menu-overlay--open" : ""}`}>
@@ -521,13 +1071,235 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
               <div className="sidebar-divider" />
 
               <div className="past-section">
-                <div className="past-title">Past Entries</div>
+<div className="past-header">
+  <div className="past-title">Past Entries</div>
 
-{archivedEntries.length === 0 ? (
-  <div className="past-text">Your past entries will appear here</div>
+  <div className="past-filter-wrap" ref={mobilePastFilterMenuRef}>
+<button
+  type="button"
+  className={`past-filter-button ${pastFilterMenuOpen ? "past-filter-button--open" : ""}`}
+  aria-expanded={pastFilterMenuOpen}
+  onClick={() => {
+    setPastFilterMenuOpen((prev) => {
+      const nextOpen = !prev;
+
+  if (nextOpen) {
+  setPastMonthMenuOpen(false);
+  setPastDayMenuOpen(false);
+}
+
+      return nextOpen;
+    });
+  }}
+>
+<span className="past-filter-button-label">{pastFilterButtonLabel}</span>
+
+<span className="past-filter-icon">
+  <svg
+    viewBox="0 0 512.023 512.023"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="m492.012 0h-472c-11.046 0-20 8.954-20 20 0 80.598 40.06 155.371 107.159 200.02 43.94 29.239 70.174 78.206 70.174 130.985v62.328c0 19.354 10.334 37.521 26.97 47.412l78.019 46.39c22.981 13.662 52.346-2.925 52.346-29.777v-126.353c0-52.779 26.233-101.746 70.175-130.985 67.097-44.649 107.157-119.423 107.157-200.02 0-11.046-8.954-20-20-20zm-109.32 186.719c-55.111 36.673-88.014 98.088-88.014 164.286v116.935l-69.921-41.575c-4.572-2.719-7.413-7.712-7.413-13.031v-62.328c0-66.198-32.903-127.614-88.015-164.286-50.333-33.493-82.411-87.319-88.325-146.72h430.016c-5.915 59.402-37.994 113.227-88.328 146.719z"/>
+  </svg>
+</span>
+</button>
+<div className={`past-filter-menu ${pastFilterMenuOpen ? "past-filter-menu--open" : ""}`} role="menu">
+  {["By Month", "By Day", "Most Recent"].map((option) => {
+   const isActive =
+  option === "By Month"
+    ? monthFilterActive
+    : option === "By Day"
+    ? dayFilterActive
+    : !monthFilterActive && !dayFilterActive;
+
+    return (
+      <div key={option} className="past-filter-menu-group">
+        <button
+          type="button"
+          className={`past-filter-menu-item ${isActive ? "past-filter-menu-item--active" : ""}`}
+          role="menuitem"
+onClick={() => {
+  if (option === "By Month") {
+    if (selectedPastFilter === "By Month") {
+      setSelectedPastMonth(null);
+      setSelectedPastFilter("Most Recent");
+      setPastMonthMenuOpen(false);
+      setSelectedPastEntryId(null);
+      return;
+    }
+
+    setSelectedPastFilter("By Month");
+    setPastMonthMenuOpen(false);
+    setPastDayMenuOpen(false);
+    return;
+  }
+
+  if (option === "By Day") {
+    if (selectedPastFilter === "By Day") {
+      setSelectedPastDay(null);
+      setSelectedPastFilter("Most Recent");
+      setPastDayMenuOpen(false);
+      setSelectedPastEntryId(null);
+      return;
+    }
+
+    setSelectedPastFilter("By Day");
+    setPastDayMenuOpen(false);
+    setPastMonthMenuOpen(false);
+    return;
+  }
+
+  setSelectedPastFilter("Most Recent");
+  setSelectedPastMonth(null);
+  setSelectedPastDay(null);
+  setPastMonthMenuOpen(false);
+  setPastDayMenuOpen(false);
+  setPastFilterMenuOpen(false);
+  setSelectedPastEntryId(null);
+}}
+        >
+          <span>{option}</span>
+
+{(option === "By Month" || option === "By Day") && (
+  <span className="past-filter-menu-item-arrow" aria-hidden="true">
+    <svg viewBox="0 0 16 16" fill="none">
+      <path
+        d="M6 3L11 8L6 13"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  </span>
+)}
+        </button>
+
+{option === "By Month" && (monthFilterActive || selectedPastFilter === "By Month") && (
+  <div className="past-filter-submenu">
+<button
+  type="button"
+  className={`past-filter-submenu-trigger ${
+    pastMonthMenuOpen ? "past-filter-submenu-trigger--open" : ""
+  }`}
+  onClick={() => {
+    setPastMonthMenuOpen((prev) => !prev);
+  }}
+>
+<span>{selectedMonthLabel}</span>
+
+      <span
+        className={`past-filter-submenu-chevron ${
+          pastMonthMenuOpen ? "past-filter-submenu-chevron--open" : ""
+        }`}
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M3 6L8 11L13 6"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    </button>
+
+    {pastMonthMenuOpen && (
+      <div className="past-filter-submenu-options">
+        {monthOptions.map((month) => (
+          <button
+            key={month.key}
+            type="button"
+            className={`past-filter-submenu-item ${
+              activeMonthKey === month.key ? "past-filter-submenu-item--active" : ""
+            }`}
+            onClick={() => {
+              setSelectedPastMonth(month.key);
+              setPastMonthMenuOpen(false);
+              setPastFilterMenuOpen(false);
+              setSelectedPastEntryId(null);
+            }}
+          >
+            {month.label}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+)}
+{option === "By Day" && (dayFilterActive || selectedPastFilter === "By Day") && (
+  <div className="past-filter-submenu">
+    <button
+      type="button"
+      className={`past-filter-submenu-trigger ${
+        pastDayMenuOpen ? "past-filter-submenu-trigger--open" : ""
+      }`}
+      onClick={() => {
+        setPastDayMenuOpen((prev) => !prev);
+      }}
+    >
+      <span>{selectedDayLabel}</span>
+
+      <span
+        className={`past-filter-submenu-chevron ${
+          pastDayMenuOpen ? "past-filter-submenu-chevron--open" : ""
+        }`}
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M3 6L8 11L13 6"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    </button>
+
+    {pastDayMenuOpen && (
+      <div className="past-filter-submenu-options">
+        {dayOptions.map((day) => (
+          <button
+            key={day}
+            type="button"
+            className={`past-filter-submenu-item ${
+              activeDayValue === day ? "past-filter-submenu-item--active" : ""
+            }`}
+            onClick={() => {
+              setSelectedPastDay(day);
+              setPastDayMenuOpen(false);
+              setPastFilterMenuOpen(false);
+              setSelectedPastEntryId(null);
+            }}
+          >
+            {day}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+)}
+      </div>
+    );
+  })}
+</div>
+  </div>
+</div>
+
+{filteredArchivedEntries.length === 0 ? (
+  <div className="past-text">
+  {archivedEntries.length === 0
+    ? "Your past entries will appear here"
+    : "No entries found for this filter"}
+</div>
 ) : (
   <div className="past-entry-list">
-    {archivedEntries.map((entry) => (
+   {filteredArchivedEntries.map((entry) => (
                       <button
                         key={entry.id}
                         type="button"
@@ -544,13 +1316,73 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
                 )}
               </div>
 
-              <button
-                type="button"
-                className="mobile-signout"
-                onClick={handleSignOut}
-              >
-                Sign Out
-              </button>
+<div className="mobile-profile-wrap" ref={mobileProfileMenuRef}>
+  <div className={`profile-menu ${profileMenuOpen ? "profile-menu--open" : ""}`}>
+    <button type="button" className="profile-menu-item">
+      <span className="profile-menu-item-icon" aria-hidden="true">
+        <svg viewBox="0 0 512.5 512.5" fill="currentColor">
+          <path d="m413.583 393.333c0 11.046-8.954 20-20 20h-78.666c-11.046 0-20-8.954-20-20s8.954-20 20-20h78.666c11.046 0 20 8.955 20 20zm98.667-234.666v273.833c0 44.112-35.888 80-80 80h-352c-44.112 0-80-35.888-80-80v-352.5c0-44.112 35.888-80 80-80h72.48c21.368 0 41.458 8.321 56.568 23.431l55.235 55.235h167.717c44.112.001 80 35.888 80 80.001zm-40 0c0-22.056-17.944-40-40-40h-176c-5.305 0-10.392-2.107-14.143-5.858l-61.093-61.093c-7.554-7.555-17.599-11.716-28.284-11.716h-72.48c-22.056 0-40 17.944-40 40v352.5c0 22.056 17.944 40 40 40h352c22.056 0 40-17.944 40-40z"></path>
+        </svg>
+      </span>
+      <span>Past journals</span>
+    </button>
+
+    <button type="button" className="profile-menu-item">
+      <span className="profile-menu-item-icon" aria-hidden="true">
+        <svg viewBox="0 0 512 512" fill="currentColor">
+          <path d="M489.514 296.695l-21.3-17.534c-14.59-12.011-14.564-34.335.001-46.322l21.299-17.534c15.157-12.479 19.034-33.877 9.218-50.882l-42.058-72.846c-9.818-17.004-30.292-24.344-48.674-17.458l-25.835 9.679c-17.696 6.628-37.016-4.551-40.117-23.161l-4.535-27.214c-3.228-19.366-19.821-33.423-39.455-33.423h-84.115c-19.635 0-36.229 14.057-39.456 33.424l-4.536 27.213c-3.107 18.643-22.453 29.778-40.116 23.162l-25.835-9.68c-18.383-6.886-38.855.455-48.674 17.458l-42.057 72.845c-9.817 17.003-5.941 38.402 9.218 50.882l21.299 17.534c14.592 12.012 14.563 34.334 0 46.322l-21.3 17.534c-15.158 12.48-19.035 33.879-9.218 50.882l42.058 72.846c9.818 17.003 30.286 24.344 48.674 17.458l25.834-9.679c17.699-6.631 37.015 4.556 40.116 23.161l4.536 27.212c3.228 19.369 19.822 33.426 39.456 33.426h84.115c19.634 0 36.228-14.057 39.455-33.424l4.535-27.212c3.106-18.638 22.451-29.781 40.117-23.161l25.836 9.678c18.387 6.887 38.856-.454 48.674-17.458l42.059-72.847c9.815-17.003 5.938-38.402-9.219-50.881zm-67.481 103.728l-25.835-9.679c-41.299-15.471-86.37 10.63-93.605 54.043l-4.535 27.213h-84.115l-4.536-27.213c-7.249-43.497-52.386-69.484-93.605-54.043l-25.835 9.679-42.057-72.846 21.299-17.534c34.049-28.03 33.978-80.114 0-108.086l-21.299-17.534 42.058-72.846 25.834 9.679c41.3 15.47 86.37-10.63 93.605-54.043l4.535-27.213h84.115l4.535 27.213c7.25 43.502 52.389 69.481 93.605 54.043l25.835-9.679 42.067 72.836s-.003.003-.011.009l-21.298 17.534c-34.048 28.028-33.98 80.113-.001 108.086l21.3 17.534zm-166.033-243.09c-54.405 0-98.667 44.262-98.667 98.667s44.262 98.667 98.667 98.667 98.667-44.262 98.667-98.667-44.262-98.667-98.667-98.667zm0 157.334c-32.349 0-58.667-26.318-58.667-58.667s26.318-58.667 58.667-58.667 58.667 26.318 58.667 58.667-26.318 58.667-58.667 58.667z" />
+        </svg>
+      </span>
+      <span>Profile settings</span>
+    </button>
+
+    <div className="profile-menu-divider" />
+
+    <button
+      type="button"
+      className="profile-menu-item profile-menu-item--danger"
+      onClick={handleSignOut}
+    >
+      <span className="profile-menu-item-icon" aria-hidden="true">
+        <svg viewBox="0 0 512.473 512.473" fill="currentColor">
+          <path d="m512.236 276.474v155.999c0 44.112-35.888 80-80 80h-352c-44.112 0-80-35.888-80-80v-155.999c0-44.112 35.888-80 80-80h58c11.046 0 20 8.954 20 20s-8.954 20-20 20h-58c-22.056 0-40 17.944-40 40v155.999c0 22.056 17.944 40 40 40h352c22.056 0 40-17.944 40-40v-155.999c0-22.056-17.944-40-40-40h-58c-11.046 0-20-8.954-20-20s8.954-20 20-20h58c44.113 0 80 35.887 80 80zm-352.875-156.43c71.479-70.82 68.571-70.054 76.645-74.712l.465 328.668c.016 11.036 8.967 19.972 20 19.972h.029c11.046-.016 19.987-8.982 19.972-20.028l-.465-328.607c8.058 4.651 5.064 3.793 77.105 75.175 7.81 7.81 20.473 7.811 28.284 0s7.811-20.474 0-28.284l-68.826-68.824c-31.028-31.028-81.754-31.383-113.137 0l-68.356 68.356c-7.811 7.811-7.811 20.474 0 28.284s20.474 7.811 28.284 0z" />
+        </svg>
+      </span>
+      <span>Log out</span>
+    </button>
+  </div>
+
+  <button
+    type="button"
+    className="profile-button"
+    onClick={() => setProfileMenuOpen((prev) => !prev)}
+    aria-expanded={profileMenuOpen}
+    aria-haspopup="menu"
+  >
+    <span className="profile-button-avatar" aria-hidden="true">
+      {(fullName || "U").charAt(0).toUpperCase()}
+    </span>
+
+    <span className="profile-button-name">{fullName}</span>
+
+    <span
+      className={`profile-button-chevron ${
+        profileMenuOpen ? "profile-button-chevron--open" : ""
+      }`}
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 16 16" fill="none">
+        <path
+          d="M3 10L8 5L13 10"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  </button>
+</div>
             </div>
           </div>
 
@@ -559,9 +1391,22 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
               <div className="greeting">
                 {isViewingPastEntry ? "ARCHIVED ENTRY" : "GOOD EVENING"}
               </div>
-              <div className="time-left">
-                {isViewingPastEntry ? "read only" : `${timeLeft} left today`}
-              </div>
+<div className="time-left">
+  {!isViewingPastEntry && (
+    <svg
+      className="time-icon"
+      viewBox="0 0 512 512"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="m462.623 41.006c-26.442-26.443-61.6-41.006-98.995-41.006h-215.256c-37.396 0-72.553 14.563-98.994 41.005-3.005 4.259-49.378 38.989-49.378 107.367v215.256c0 68.386 46.401 103.149 49.377 107.366 26.442 26.444 61.6 41.006 98.995 41.006h215.256c37.396 0 72.553-14.563 98.994-41.005 3.005-4.259 49.378-38.989 49.378-107.367v-215.256c0-68.386-46.401-103.149-49.377-107.366zm-28.285 401.705c-18.887 18.887-44 29.289-70.71 29.289h-87.596v-27.968c0-11.046-8.954-20-20-20s-20 8.954-20 20v27.968h-87.66c-26.711 0-51.823-10.402-70.711-29.29-3.046-4.235-37.661-28.973-37.661-79.082v-87.628h28c11.046 0 20-8.954 20-20s-8.954-20-20-20h-28v-87.628c0-50.375 34.51-74.701 37.662-79.083 18.887-18.887 43.999-29.289 70.71-29.289h87.66v27.968c0 11.046 8.954 20 20 20s20-8.954 20-20v-27.968h87.596c26.711 0 51.823 10.402 70.711 29.29 3.046 4.235 37.661 28.973 37.661 79.082v87.628h-27.936c-11.046 0-20 8.954-20 20s8.954 20 20 20h27.936v87.628c0 50.375-34.51 74.701-37.662 79.083zm-79.671-186.711c0 11.046-8.954 20-20 20h-78.667c-11.046 0-20-8.954-20-20v-98.667c0-11.046 8.954-20 20-20s20 8.954 20 20v78.667h58.667c11.045 0 20 8.954 20 20z"></path>
+    </svg>
+  )}
+
+  <span>
+    {isViewingPastEntry ? "read only" : `${timeLeft} left today`}
+  </span>
+</div>
             </div>
 
             <h2 className="date-heading">
@@ -633,32 +1478,14 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
     />
   </svg>
 ) : (
-  <svg
-    className="saved-icon"
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    aria-hidden="true"
-  >
-    <path
-      d="M4 5.5C4 4.67157 4.67157 4 5.5 4H15.8787C16.2765 4 16.658 4.15804 16.9393 4.43934L19.5607 7.06066C19.842 7.34196 20 7.72348 20 8.12132V18.5C20 19.3284 19.3284 20 18.5 20H5.5C4.67157 20 4 19.3284 4 18.5V5.5Z"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M8 4V9H15V6.5L12.5 4H8Z"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M8 20V13H16V20"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinejoin="round"
-    />
-  </svg>
+<svg
+  className="saved-icon"
+  viewBox="0 0 512 512"
+  fill="currentColor"
+  aria-hidden="true"
+>
+  <path d="m478.329 96.045-62.374-62.374c-21.713-21.713-50.581-33.671-81.288-33.671h-214.579c-66.273 0-120.088 53.76-120.088 120.088v271.824c0 66.273 53.76 120.088 120.088 120.088h271.824c66.273 0 120.088-53.76 120.088-120.088v-214.579c0-30.707-11.958-59.575-33.671-81.288zm-280.996-56.045h117.333v77.333c0 11.028-8.972 20-20 20h-77.333c-11.028 0-20-8.972-20-20zm274.667 351.912c0 44.187-35.869 80.088-80.088 80.088h-271.824c-44.187 0-80.088-35.869-80.088-80.088v-271.824c0-44.187 35.869-80.088 80.088-80.088h37.246v77.333c0 33.084 26.916 60 60 60h77.333c33.084 0 60-26.916 60-60v-74.65c12.362 3.4 23.692 9.96 33.004 19.272l62.374 62.374c14.158 14.158 21.955 32.982 21.955 53.004zm-78-17.245c0 11.046-8.954 20-20 20h-236c-11.046 0-20-8.954-20-20s8.954-20 20-20h236c11.046 0 20 8.954 20 20zm0-98.667c0 11.046-8.954 20-20 20h-236c-11.046 0-20-8.954-20-20s8.954-20 20-20h236c11.046 0 20 8.954 20 20z"></path>
+</svg>
 )}
 <span>{savingEntry ? "Saving..." : buttonLabel}</span>
                 </button>
@@ -667,6 +1494,77 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
           </div>
         </section>
       </div>
+{renameJournalOpen && (
+  <>
+    <button
+      type="button"
+      className="modal-backdrop"
+      aria-label="Close rename journal modal"
+      onClick={() => {
+        setRenameJournalOpen(false);
+        setRenameJournalValue(currentJournalName);
+      }}
+    />
+
+    <div
+      className="rename-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rename-journal-title"
+    >
+      <button
+        type="button"
+        className="rename-modal-close"
+        aria-label="Close rename journal modal"
+        onClick={() => {
+          setRenameJournalOpen(false);
+          setRenameJournalValue(currentJournalName);
+        }}
+      >
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M4 4L12 12M12 4L4 12"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+
+      <div className="rename-modal-title" id="rename-journal-title">
+        Change journal name
+      </div>
+
+      <input
+        className="rename-modal-input auth-input"
+        type="text"
+        value={renameJournalValue}
+        onChange={(e) => setRenameJournalValue(e.target.value)}
+        placeholder="New journal name"
+        maxLength={40}
+        autoFocus
+      />
+      <div className="auth-char-count">
+  {renameJournalValue.length}/40
+</div>
+
+      <div className="rename-modal-actions">
+        <button
+          type="button"
+          className="rename-modal-button auth-button"
+          onClick={handleRenameJournal}
+          disabled={!renameJournalIsValid || updatingJournalName}
+        >
+          {updatingJournalName ? (
+            <span className="auth-button-spinner" aria-hidden="true" />
+          ) : (
+            "Update"
+          )}
+        </button>
+      </div>
+    </div>
+  </>
+)}
     </main>
   );
 }
