@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/style.css";
 import "./App.css";
 
 type JournalEntry = {
@@ -108,6 +110,27 @@ const mobileJournalMenuRef = useRef<HTMLDivElement | null>(null);
 
 const [currentJournalName, setCurrentJournalName] = useState(journalName);
 
+const [calendarOpen, setCalendarOpen] = useState(false);
+const [calendarMonth, setCalendarMonth] = useState(new Date());
+const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>();
+const calendarYearLabel = calendarMonth.getFullYear();
+const [calendarNotice, setCalendarNotice] = useState("");
+const openCalendar = () => {
+  setJournalMenuOpen(false);
+  setMobileMenuOpen(false);
+  setCalendarMonth(new Date());
+  setCalendarOpen(true);
+};
+
+const entryDates = useMemo(() => {
+  return entries
+    .filter((entry) => entry.content.trim())
+    .map((entry) => {
+      const [year, month, day] = entry.day_key.split("-").map(Number);
+      return new Date(year, month - 1, day);
+    });
+}, [entries]);
+
 const archivedEntries = useMemo<PastEntry[]>(() => {
   return entries
     .filter((entry) => entry.day_key < currentDayKey && entry.content.trim())
@@ -212,6 +235,28 @@ const handleRenameJournal = async () => {
   setRenameJournalOpen(false);
 };
 
+useEffect(() => {
+  if (!calendarOpen) return;
+
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setCalendarOpen(false);
+    }
+  };
+
+  document.addEventListener("keydown", handleEscape);
+  return () => document.removeEventListener("keydown", handleEscape);
+}, [calendarOpen]);
+
+useEffect(() => {
+  if (!calendarNotice) return;
+
+  const timeout = window.setTimeout(() => {
+    setCalendarNotice("");
+  }, 2000);
+
+  return () => window.clearTimeout(timeout);
+}, [calendarNotice]);
 
 useEffect(() => {
   if (!renameJournalOpen) return;
@@ -570,9 +615,9 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
     <button
       type="button"
       className="journal-menu-item"
-      onClick={() => {
-        setJournalMenuOpen(false);
-      }}
+   onClick={() => {
+  openCalendar();
+}}
     >
       <span className="journal-menu-item-icon" aria-hidden="true">
   <svg viewBox="0 0 512 512" fill="currentColor">
@@ -1005,9 +1050,9 @@ onClick={() => {
     <button
       type="button"
       className="journal-menu-item"
-      onClick={() => {
-        setJournalMenuOpen(false);
-      }}
+  onClick={() => {
+  openCalendar();
+}}
     >
       <span className="journal-menu-item-icon" aria-hidden="true">
   <svg viewBox="0 0 512 512" fill="currentColor">
@@ -1562,6 +1607,91 @@ onClick={() => {
           )}
         </button>
       </div>
+    </div>
+  </>
+)}
+
+
+{calendarOpen && (
+  <>
+    <button
+      type="button"
+      className="modal-backdrop"
+      aria-label="Close calendar"
+      onClick={() => setCalendarOpen(false)}
+    />
+
+    <div
+      className="calendar-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="calendar-modal-title"
+    >
+      <button
+        type="button"
+        className="calendar-modal-close"
+        aria-label="Close calendar"
+        onClick={() => setCalendarOpen(false)}
+      >
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M4 4L12 12M12 4L4 12"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+
+  <div className="calendar-modal-header">
+  <div className="calendar-modal-title" id="calendar-modal-title">
+    {currentJournalName}
+  </div>
+
+  <div className="calendar-modal-year">
+    {calendarYearLabel}
+  </div>
+  {calendarNotice && (
+  <div className="calendar-notice">
+    {calendarNotice}
+  </div>
+)}
+</div>
+
+<DayPicker
+  month={calendarMonth}
+  onMonthChange={setCalendarMonth}
+  mode="single"
+  selected={selectedCalendarDate}
+ onSelect={(date) => {
+  if (!date) return;
+
+  setSelectedCalendarDate(date);
+
+  const dayKey = getLocalDayKey(date);
+  const matchingEntry = archivedEntries.find((entry) => entry.dateKey === dayKey);
+
+  if (matchingEntry) {
+    setSelectedPastEntryId(matchingEntry.id);
+    setCalendarOpen(false);
+    setMobileMenuOpen(false);
+    return;
+  }
+
+  setCalendarNotice("No entry for this date");
+}}
+  captionLayout="dropdown-months"
+  navLayout="after"
+  startMonth={new Date(calendarYearLabel, 0)}
+  endMonth={new Date(calendarYearLabel, 11)}
+  showOutsideDays
+  modifiers={{
+    hasEntry: entryDates,
+  }}
+  modifiersClassNames={{
+    hasEntry: "calendar-day-has-entry",
+  }}
+/>
     </div>
   </>
 )}
