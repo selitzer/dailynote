@@ -11,7 +11,7 @@ type Props = {
 export default function JournalSetup({ userId, fullName, onComplete }: Props) {
   const [journalName, setJournalName] = useState("");
   const [saving, setSaving] = useState(false);
-
+const currentYear = new Date().getFullYear();
   const isValid =
     journalName.length > 0 && journalName.length <= 40;
 
@@ -45,13 +45,13 @@ export default function JournalSetup({ userId, fullName, onComplete }: Props) {
       </div>
 
       <div className="auth-container">
-        <p className="auth-subtitle">Give your 2026 journal a name</p>
+<p className="auth-subtitle">Give your {currentYear} journal a name</p>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <input
             className="auth-input"
             type="text"
-            placeholder="My 2026 Journal"
+           placeholder={`My ${currentYear} Journal`}
             value={journalName}
             maxLength={40} // ✅ hard limit
             onChange={(e) => setJournalName(e.target.value)}
