@@ -985,31 +985,7 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
   };
 
 
-    const appReady =
-
-    !journalsLoading &&
-
-    !entriesLoading &&
-
-    !!currentJournalId &&
-
-    !!activeJournalId &&
-
-    !!currentJournalName;
-
-  if (!appReady) {
-
-    return (
-
-      <div className="app-loader">
-
-        <div className="app-spinner" aria-label="Loading" />
-
-      </div>
-
-    );
-
-  }
+  
 
   return (
     <main className="app">
