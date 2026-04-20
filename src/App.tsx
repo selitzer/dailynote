@@ -79,7 +79,6 @@ function App({ userId, journalName, fullName, onJournalNameUpdated }: AppProps) 
   const initialDate = new Date();
 
 const [hasPassword, setHasPassword] = useState(false);
-const [authProvider, setAuthProvider] = useState("email");
 
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
@@ -363,24 +362,28 @@ const handleUpdatePassword = async () => {
     password: trimmedPassword,
   });
 
-  setUpdatingPassword(false);
-
   if (error) {
+    setUpdatingPassword(false);
     setPasswordError(error.message);
     return;
   }
 
-  await supabase
-  .from("profiles")
-  .update({ has_password: true })
-  .eq("id", userId);
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({ has_password: true })
+    .eq("id", userId);
 
-setHasPassword(true);
+  setUpdatingPassword(false);
 
+  if (profileError) {
+    setPasswordError(profileError.message);
+    return;
+  }
+
+  setHasPassword(true);
   setNewPassword("");
   setConfirmPassword("");
   setPasswordSuccess("Password updated");
-  
 
   setTimeout(() => {
     setPasswordSuccess("");
@@ -418,15 +421,19 @@ useEffect(() => {
 
     setAccountEmail(user.email ?? "");
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("auth_provider, has_password")
+      .select("has_password")
       .eq("id", user.id)
       .maybeSingle();
 
+    if (profileError) {
+      console.error("Load profile auth settings error:", profileError.message);
+      return;
+    }
+
     if (!mounted) return;
 
-    setAuthProvider(profile?.auth_provider ?? "email");
     setHasPassword(profile?.has_password ?? false);
   }
 

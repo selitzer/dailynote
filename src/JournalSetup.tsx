@@ -38,14 +38,14 @@ async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
       ? user.app_metadata.provider
       : "email";
 
-const { error } = await supabase.from("profiles").upsert({
-  id: userId,
-  full_name: fullName,
-  journal_name: journalName,
-  email: user.email ?? null,
-  auth_provider: provider,
-  has_password: provider === "email",
-});
+  const { error } = await supabase.from("profiles").upsert({
+    id: userId,
+    full_name: fullName,
+    journal_name: journalName,
+    email: user.email ?? null,
+    auth_provider: provider,
+    has_password: provider === "email",
+  });
 
   setSaving(false);
 
