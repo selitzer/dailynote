@@ -69,23 +69,15 @@ function RootApp() {
 
         if (!isMounted) return;
 
-setSession(currentSession);
+        setSession(currentSession);
 
-if (window.location.hash.includes("access_token")) {
-  window.history.replaceState(
-    null,
-    "",
-    window.location.pathname + window.location.search
-  );
-}
-
-if (currentSession?.user?.id) {
-  const profileData = await loadProfile(currentSession.user.id);
-  if (!isMounted) return;
-  setProfile(profileData);
-} else {
-  setProfile(null);
-}
+        if (currentSession?.user?.id) {
+          const profileData = await loadProfile(currentSession.user.id);
+          if (!isMounted) return;
+          setProfile(profileData);
+        } else {
+          setProfile(null);
+        }
       } catch (error) {
         console.error("Initial auth bootstrap failed:", error);
         if (isMounted) {
