@@ -16,7 +16,7 @@ async function handleGoogleLogin() {
   await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: "https://selitzer.github.io/dailynote/",
+      redirectTo: "https://mydailydiario.com/"
     },
   });
 }
