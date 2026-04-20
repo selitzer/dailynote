@@ -147,12 +147,6 @@ const [passwordSuccess, setPasswordSuccess] = useState("");
 
 const [pastJournalsOpen, setPastJournalsOpen] = useState(false);
 
-const appReady =
-  !journalsLoading &&
-  !entriesLoading &&
-  !!currentJournalId &&
-  !!activeJournalId &&
-  !!currentJournalName;
 
 const desktopPastEntryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 const mobilePastEntryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -892,14 +886,7 @@ useEffect(() => {
   }, [displayedText]);
 
 
-if (!appReady) {
-  return (
-    <div className="app-loader">
-      <div className="app-spinner" aria-label="Loading" />
-    </div>
-  );
-}
-
+  
   const trimmedSavedText = savedText.trim();
   const hasSavedText = trimmedSavedText.length > 0;
   const isDirty = text !== savedText;
@@ -996,6 +983,33 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
     setSelectedPastEntryId(entryId);
     setMobileMenuOpen(false);
   };
+
+
+    const appReady =
+
+    !journalsLoading &&
+
+    !entriesLoading &&
+
+    !!currentJournalId &&
+
+    !!activeJournalId &&
+
+    !!currentJournalName;
+
+  if (!appReady) {
+
+    return (
+
+      <div className="app-loader">
+
+        <div className="app-spinner" aria-label="Loading" />
+
+      </div>
+
+    );
+
+  }
 
   return (
     <main className="app">
