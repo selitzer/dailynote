@@ -6,10 +6,20 @@ import "./App.css";
 
 type JournalEntry = {
   id: string;
+  journal_id: string;
   day_key: string;
   content: string;
   created_at: string;
   updated_at: string;
+};
+
+type Journal = {
+  id: string;
+  name: string;
+  year: number;
+  is_current: boolean;
+  created_at: string;
+  closed_at: string | null;
 };
 
 type PastEntry = {
@@ -72,9 +82,17 @@ function App({ userId, journalName, fullName, onJournalNameUpdated }: AppProps) 
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [savingEntry, setSavingEntry] = useState(false);
 
+  const [journals, setJournals] = useState<Journal[]>([]);
+const [journalsLoading, setJournalsLoading] = useState(true);
+const [currentJournalId, setCurrentJournalId] = useState<string | null>(null);
+const [activeJournalId, setActiveJournalId] = useState<string | null>(null);
+
   const [renameJournalOpen, setRenameJournalOpen] = useState(false);
 const [renameJournalValue, setRenameJournalValue] = useState(journalName);
 const [updatingJournalName, setUpdatingJournalName] = useState(false);
+
+const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+const [accountEmail, setAccountEmail] = useState("");
 
   const [text, setText] = useState("");
   const [timeLeft, setTimeLeft] = useState("");
@@ -108,17 +126,49 @@ const [journalMenuOpen, setJournalMenuOpen] = useState(false);
 const desktopJournalMenuRef = useRef<HTMLDivElement | null>(null);
 const mobileJournalMenuRef = useRef<HTMLDivElement | null>(null);
 
-const [currentJournalName, setCurrentJournalName] = useState(journalName);
+const [currentJournalName, setCurrentJournalName] = useState("");
 
 const [calendarOpen, setCalendarOpen] = useState(false);
 const [calendarMonth, setCalendarMonth] = useState(new Date());
 const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>();
 const calendarYearLabel = calendarMonth.getFullYear();
 const [calendarNotice, setCalendarNotice] = useState("");
+
+const [showPasswordFields, setShowPasswordFields] = useState(false);
+const [newPassword, setNewPassword] = useState("");
+const [confirmPassword, setConfirmPassword] = useState("");
+const [updatingPassword, setUpdatingPassword] = useState(false);
+const [passwordError, setPasswordError] = useState("");
+const [passwordSuccess, setPasswordSuccess] = useState("");
+
+const [pastJournalsOpen, setPastJournalsOpen] = useState(false);
+
+const desktopPastEntryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+const mobilePastEntryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+const activeJournal = useMemo(() => {
+  return journals.find((journal) => journal.id === activeJournalId) ?? null;
+}, [journals, activeJournalId]);
+
+const activeJournalYear = activeJournal?.year ?? new Date().getFullYear();
+
+const calendarEntries = useMemo<PastEntry[]>(() => {
+  return entries
+    .filter((entry) => entry.content.trim())
+    .map((entry) => ({
+      id: entry.id,
+      dateKey: entry.day_key,
+      dateLabel: formatShortDate(getDateFromDayKey(entry.day_key)),
+      content: entry.content,
+    }));
+}, [entries]);
+
 const openCalendar = () => {
   setJournalMenuOpen(false);
   setMobileMenuOpen(false);
-  setCalendarMonth(new Date());
+  setSelectedCalendarDate(undefined);
+  setCalendarNotice("");
+  setCalendarMonth(new Date(activeJournalYear, 0, 1));
   setCalendarOpen(true);
 };
 
@@ -142,22 +192,22 @@ const archivedEntries = useMemo<PastEntry[]>(() => {
     }));
 }, [entries, currentDayKey]);
 
+
+
 const dayOptions = useMemo(() => {
   return Array.from({ length: 31 }, (_, index) => index + 1);
 }, []);
 
-const monthOptions = useMemo(() => {
-  const now = new Date();
-  const year = now.getFullYear();
 
+const monthOptions = useMemo(() => {
   return Array.from({ length: 12 }, (_, index) => {
-    const date = new Date(year, index, 1);
+    const date = new Date(activeJournalYear, index, 1);
     return {
       key: getMonthKey(date),
       label: formatMonthLabel(date),
     };
-  })
-}, []);
+  });
+}, [activeJournalYear]);
 
 const selectedPastEntry = useMemo(() => {
   return archivedEntries.find((entry) => entry.id === selectedPastEntryId) ?? null;
@@ -203,13 +253,39 @@ const pastFilterButtonLabel =
     ? selectedDayLabel
     : "Filter";
 
-  const isViewingPastEntry = selectedPastEntry !== null;
+    const isViewingPastJournal =
+  activeJournalId !== null &&
+  currentJournalId !== null &&
+  activeJournalId !== currentJournalId;
+
+ const isViewingPastEntry = selectedPastEntry !== null;
+const isReadOnly = isViewingPastEntry || isViewingPastJournal;
 const renameJournalIsValid =
   renameJournalValue.length > 0 && renameJournalValue.length <= 40;
-const handleRenameJournal = async () => {
-  const nextName = renameJournalValue;
 
-  if (!renameJournalIsValid || updatingJournalName) return;
+
+const handleClosePastJournals = () => {
+  setPastJournalsOpen(false);
+};
+
+const handleOpenJournal = (journalId: string) => {
+  setSelectedPastEntryId(null);
+  setSelectedPastMonth(null);
+  setSelectedPastDay(null);
+  setSelectedPastFilter("Most Recent");
+  setPastMonthMenuOpen(false);
+  setPastDayMenuOpen(false);
+  setPastFilterMenuOpen(false);
+  setMobileMenuOpen(false);
+  setProfileMenuOpen(false);
+  setPastJournalsOpen(false);
+  setActiveJournalId(journalId);
+};
+
+  const handleRenameJournal = async () => {
+  const nextName = renameJournalValue.trim();
+
+  if (!renameJournalIsValid || updatingJournalName || !activeJournalId) return;
 
   if (nextName === currentJournalName) {
     setRenameJournalOpen(false);
@@ -219,9 +295,9 @@ const handleRenameJournal = async () => {
   setUpdatingJournalName(true);
 
   const { error } = await supabase
-    .from("profiles")
-    .update({ journal_name: nextName })
-    .eq("id", userId);
+    .from("journals")
+    .update({ name: nextName })
+    .eq("id", activeJournalId);
 
   setUpdatingJournalName(false);
 
@@ -231,9 +307,159 @@ const handleRenameJournal = async () => {
   }
 
   setCurrentJournalName(nextName);
+  setRenameJournalValue(nextName);
+  setJournals((prev) =>
+    prev.map((journal) =>
+      journal.id === activeJournalId ? { ...journal, name: nextName } : journal
+    )
+  );
   onJournalNameUpdated?.(nextName);
   setRenameJournalOpen(false);
 };
+
+const handleOpenPasswordFields = () => {
+  setShowPasswordFields(true);
+  setPasswordError("");
+  setNewPassword("");
+  setConfirmPassword("");
+};
+
+const handleCloseProfileSettings = () => {
+  setProfileSettingsOpen(false);
+  setShowPasswordFields(false);
+  setNewPassword("");
+  setConfirmPassword("");
+  setPasswordError("");
+  setUpdatingPassword(false);
+};
+
+const handleUpdatePassword = async () => {
+  const trimmedPassword = newPassword.trim();
+  const trimmedConfirm = confirmPassword.trim();
+
+  if (!trimmedPassword || !trimmedConfirm) {
+    setPasswordError("Fill out both password fields.");
+    return;
+  }
+
+  if (trimmedPassword.length < 8) {
+    setPasswordError("Password must be at least 8 characters.");
+    return;
+  }
+
+  if (trimmedPassword !== trimmedConfirm) {
+    setPasswordError("Passwords do not match.");
+    return;
+  }
+
+  setUpdatingPassword(true);
+  setPasswordError("");
+  setPasswordSuccess("");
+
+  const { error } = await supabase.auth.updateUser({
+    password: trimmedPassword,
+  });
+
+  setUpdatingPassword(false);
+
+  if (error) {
+    setPasswordError(error.message);
+    return;
+  }
+
+  // ✅ SUCCESS BEHAVIOR
+  setNewPassword("");
+  setConfirmPassword("");
+  setPasswordSuccess("Password updated");
+
+  // optional auto-hide after 2 sec
+  setTimeout(() => {
+    setPasswordSuccess("");
+  }, 2000);
+};
+
+useEffect(() => {
+  if (!pastJournalsOpen) return;
+
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setPastJournalsOpen(false);
+    }
+  };
+
+  document.addEventListener("keydown", handleEscape);
+  return () => document.removeEventListener("keydown", handleEscape);
+}, [pastJournalsOpen]);
+
+useEffect(() => {
+  let mounted = true;
+
+  async function loadAccountEmail() {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error) {
+      console.error("Load user email error:", error.message);
+      return;
+    }
+
+    if (mounted) {
+      setAccountEmail(user?.email ?? "");
+    }
+  }
+
+  loadAccountEmail();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
+
+useEffect(() => {
+  if (!selectedPastEntryId) return;
+
+  const timeout = window.setTimeout(() => {
+    const isMobileLayout = window.innerWidth <= 900;
+
+    const activeEntryEl = isMobileLayout
+      ? mobilePastEntryRefs.current[selectedPastEntryId]
+      : desktopPastEntryRefs.current[selectedPastEntryId];
+
+    if (!activeEntryEl) return;
+
+    activeEntryEl.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, 120);
+
+  return () => window.clearTimeout(timeout);
+}, [selectedPastEntryId, filteredArchivedEntries, mobileMenuOpen, calendarOpen]);
+
+useEffect(() => {
+  if (!activeJournalId) return;
+
+  const activeJournal = journals.find((journal) => journal.id === activeJournalId);
+  if (!activeJournal) return;
+
+  setCurrentJournalName(activeJournal.name);
+  setRenameJournalValue(activeJournal.name);
+}, [journals, activeJournalId]);
+
+useEffect(() => {
+  if (!profileSettingsOpen) return;
+
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      handleCloseProfileSettings();
+    }
+  };
+
+  document.addEventListener("keydown", handleEscape);
+  return () => document.removeEventListener("keydown", handleEscape);
+}, [profileSettingsOpen, newPassword, confirmPassword, showPasswordFields]);
 
 useEffect(() => {
   if (!calendarOpen) return;
@@ -304,10 +530,7 @@ useEffect(() => {
   };
 }, [journalMenuOpen]);
 
-useEffect(() => {
-  setCurrentJournalName(journalName);
-  setRenameJournalValue(journalName);
-}, [journalName]);
+
 
 useEffect(() => {
   if (selectedPastFilter !== "By Day") {
@@ -335,7 +558,12 @@ if (todayKey !== currentDayKey) {
   setCurrentDateLabel(formatFullDate(now));
   setSelectedPastEntryId(null);
   setJustSaved(false);
-  loadEntries();
+
+getOrCreateCurrentJournal().then((journal) => {
+  if (journal) {
+    setActiveJournalId(journal.id);
+  }
+});
 }
 
     const midnight = new Date();
@@ -442,18 +670,156 @@ useEffect(() => {
   };
 }, [pastFilterMenuOpen]);
 
-async function loadEntries() {
+async function getOrCreateCurrentJournal() {
+  const currentYear = new Date().getFullYear();
+
+  const { data: existingJournals, error: fetchError } = await supabase
+    .from("journals")
+    .select("id, name, year, is_current, created_at, closed_at")
+    .eq("user_id", userId)
+    .order("year", { ascending: false });
+
+  if (fetchError) {
+    console.error("Load journals error:", fetchError.message);
+    return null;
+  }
+
+  const journalsList = existingJournals ?? [];
+
+  const currentYearJournal =
+    journalsList.find((journal) => journal.year === currentYear) ?? null;
+
+  const journalsMarkedCurrent = journalsList.filter((journal) => journal.is_current);
+
+  let resolvedJournal: Journal | null = null;
+
+  if (currentYearJournal) {
+    resolvedJournal = currentYearJournal;
+
+    const journalsNeedingClose = journalsList.filter(
+      (journal) => journal.id !== currentYearJournal.id && journal.is_current
+    );
+
+    if (!currentYearJournal.is_current) {
+      const { error: promoteError } = await supabase
+        .from("journals")
+        .update({
+          is_current: true,
+          closed_at: null,
+        })
+        .eq("id", currentYearJournal.id);
+
+      if (promoteError) {
+        console.error("Promote current year journal error:", promoteError.message);
+        return null;
+      }
+    }
+
+    if (journalsNeedingClose.length > 0) {
+      const idsToClose = journalsNeedingClose.map((journal) => journal.id);
+
+      const { error: closeError } = await supabase
+        .from("journals")
+        .update({
+          is_current: false,
+          closed_at: new Date().toISOString(),
+        })
+        .in("id", idsToClose);
+
+      if (closeError) {
+        console.error("Close outdated current journals error:", closeError.message);
+        return null;
+      }
+    }
+  } else {
+    if (journalsMarkedCurrent.length > 0) {
+      const idsToClose = journalsMarkedCurrent.map((journal) => journal.id);
+
+      const { error: closeError } = await supabase
+        .from("journals")
+        .update({
+          is_current: false,
+          closed_at: new Date().toISOString(),
+        })
+        .in("id", idsToClose);
+
+      if (closeError) {
+        console.error("Close previous year journals error:", closeError.message);
+        return null;
+      }
+    }
+
+    const { data: createdJournal, error: createError } = await supabase
+      .from("journals")
+      .insert({
+        user_id: userId,
+        name: `${currentYear} Journal`,
+        year: currentYear,
+        is_current: true,
+        closed_at: null,
+      })
+      .select("id, name, year, is_current, created_at, closed_at")
+      .single();
+
+    if (createError) {
+      console.error("Create current year journal error:", createError.message);
+      return null;
+    }
+
+    resolvedJournal = createdJournal;
+  }
+
+  const { data: refreshedJournals, error: refreshError } = await supabase
+    .from("journals")
+    .select("id, name, year, is_current, created_at, closed_at")
+    .eq("user_id", userId)
+    .order("year", { ascending: false });
+
+  if (refreshError) {
+    console.error("Refresh journals error:", refreshError.message);
+    return null;
+  }
+
+  const finalJournals = refreshedJournals ?? [];
+  const finalCurrentJournal =
+    finalJournals.find((journal) => journal.year === currentYear && journal.is_current) ??
+    finalJournals.find((journal) => journal.year === currentYear) ??
+    resolvedJournal;
+
+  if (!finalCurrentJournal) {
+    console.error("No current journal could be resolved.");
+    return null;
+  }
+
+  setJournals(finalJournals);
+  setCurrentJournalId(finalCurrentJournal.id);
+  setActiveJournalId((prev) => {
+    if (!prev) return finalCurrentJournal.id;
+
+    const prevJournalStillExists = finalJournals.some((journal) => journal.id === prev);
+    return prevJournalStillExists ? prev : finalCurrentJournal.id;
+  });
+  setCurrentJournalName(finalCurrentJournal.name);
+  setRenameJournalValue(finalCurrentJournal.name);
+  setJournalsLoading(false);
+
+  return finalCurrentJournal;
+}
+
+async function loadEntries(journalId: string) {
   setEntriesLoading(true);
 
   const { data, error } = await supabase
     .from("journal_entries")
-    .select("id, day_key, content, created_at, updated_at")
-    .eq("user_id", userId)
+    .select("id, journal_id, day_key, content, created_at, updated_at")
+    .eq("journal_id", journalId)
     .order("day_key", { ascending: false });
 
   if (error) {
     console.error("Load entries error:", error.message);
     setEntries([]);
+    setSavedText("");
+    setText("");
     setEntriesLoading(false);
     return;
   }
@@ -464,11 +830,19 @@ async function loadEntries() {
   const todayEntry =
     loadedEntries.find((entry) => entry.day_key === getLocalDayKey(new Date())) ?? null;
 
-  setSavedText(todayEntry?.content ?? "");
-  setText(todayEntry?.content ?? "");
+  const isCurrentJournal = journalId === currentJournalId;
+
+  if (isCurrentJournal) {
+    setSavedText(todayEntry?.content ?? "");
+    setText(todayEntry?.content ?? "");
+  } else {
+    setSavedText("");
+    setText("");
+  }
 
   setEntriesLoading(false);
 }
+
 useEffect(() => {
   if (selectedPastFilter !== "By Month") {
     setPastMonthMenuOpen(false);
@@ -476,8 +850,25 @@ useEffect(() => {
 }, [selectedPastFilter]);
 
 useEffect(() => {
-  loadEntries();
+  async function initializeJournalFlow() {
+    setJournalsLoading(true);
+
+    const journal = await getOrCreateCurrentJournal();
+    if (!journal) {
+      setJournalsLoading(false);
+      return;
+    }
+
+    await loadEntries(journal.id);
+  }
+
+  initializeJournalFlow();
 }, [userId]);
+
+useEffect(() => {
+  if (!activeJournalId) return;
+  loadEntries(activeJournalId);
+}, [activeJournalId]);
 
   const displayedText = isViewingPastEntry ? selectedPastEntry.content : text;
 
@@ -496,10 +887,10 @@ useEffect(() => {
 
   const buttonIsAccent = isDirty && !justSaved;
 const buttonDisabled =
-  !buttonIsAccent || isViewingPastEntry || entriesLoading || savingEntry;
+  !buttonIsAccent || isReadOnly || entriesLoading || savingEntry || journalsLoading;
 
 const handleSave = async () => {
-  if (buttonDisabled || savingEntry) return;
+  if (buttonDisabled || savingEntry || !activeJournalId) return;
 
   const content = text;
   if (!content.trim()) return;
@@ -511,14 +902,15 @@ const handleSave = async () => {
     .upsert(
       {
         user_id: userId,
+        journal_id: activeJournalId,
         day_key: currentDayKey,
         content,
       },
       {
-        onConflict: "user_id,day_key",
+        onConflict: "journal_id,day_key",
       }
     )
-    .select("id, day_key, content, created_at, updated_at")
+    .select("id, journal_id, day_key, content, created_at, updated_at")
     .single();
 
   setSavingEntry(false);
@@ -569,10 +961,14 @@ for (let i = 1; i < archivedDayKeys.length; i++) {
   return streak;
 }, [entries, currentDayKey]);
 
-  const goToToday = () => {
-    setSelectedPastEntryId(null);
-    setMobileMenuOpen(false);
-  };
+ const goToToday = () => {
+  setSelectedPastEntryId(null);
+  setMobileMenuOpen(false);
+
+  if (currentJournalId && activeJournalId !== currentJournalId) {
+    setActiveJournalId(currentJournalId);
+  }
+};
 
   const openPastEntry = (entryId: string) => {
     setSelectedPastEntryId(entryId);
@@ -908,17 +1304,20 @@ onClick={() => {
               ) : (
                 <div className="past-entry-list">
                   {filteredArchivedEntries.map((entry) => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    className={`past-entry-button ${
-                      selectedPastEntryId === entry.id ? "past-entry-button--active" : ""
-                    }`}
-                    onClick={() => openPastEntry(entry.id)}
-                  >
-                    <div className="past-entry-date">{entry.dateLabel}</div>
-                    <div className="past-entry-preview">{entry.content}</div>
-                  </button>
+<button
+  key={entry.id}
+ref={(el) => {
+  desktopPastEntryRefs.current[entry.id] = el;
+}}
+  type="button"
+  className={`past-entry-button ${
+    selectedPastEntryId === entry.id ? "past-entry-button--active" : ""
+  }`}
+  onClick={() => openPastEntry(entry.id)}
+>
+  <div className="past-entry-date">{entry.dateLabel}</div>
+  <div className="past-entry-preview">{entry.content}</div>
+</button>
                 ))}
               </div>
             )}
@@ -937,16 +1336,32 @@ onClick={() => {
   <div className="sidebar-divider--bottom" />
 
   <div className={`profile-menu ${profileMenuOpen ? "profile-menu--open" : ""}`}>
-    <button type="button" className="profile-menu-item">
-<span className="profile-menu-item-icon" aria-hidden="true">
-  <svg viewBox="0 0 512.5 512.5" fill="currentColor">
-    <path d="m413.583 393.333c0 11.046-8.954 20-20 20h-78.666c-11.046 0-20-8.954-20-20s8.954-20 20-20h78.666c11.046 0 20 8.955 20 20zm98.667-234.666v273.833c0 44.112-35.888 80-80 80h-352c-44.112 0-80-35.888-80-80v-352.5c0-44.112 35.888-80 80-80h72.48c21.368 0 41.458 8.321 56.568 23.431l55.235 55.235h167.717c44.112.001 80 35.888 80 80.001zm-40 0c0-22.056-17.944-40-40-40h-176c-5.305 0-10.392-2.107-14.143-5.858l-61.093-61.093c-7.554-7.555-17.599-11.716-28.284-11.716h-72.48c-22.056 0-40 17.944-40 40v352.5c0 22.056 17.944 40 40 40h352c22.056 0 40-17.944 40-40z"></path>
-  </svg>
-</span>
-      <span>Past journals</span>
-    </button>
+<button
+  type="button"
+  className="profile-menu-item"
+  onClick={() => {
+    setProfileMenuOpen(false);
+    setMobileMenuOpen(false);
+    setPastJournalsOpen(true);
+  }}
+>
+  <span className="profile-menu-item-icon" aria-hidden="true">
+    <svg viewBox="0 0 512.5 512.5" fill="currentColor">
+      <path d="m413.583 393.333c0 11.046-8.954 20-20 20h-78.666c-11.046 0-20-8.954-20-20s8.954-20 20-20h78.666c11.046 0 20 8.955 20 20zm98.667-234.666v273.833c0 44.112-35.888 80-80 80h-352c-44.112 0-80-35.888-80-80v-352.5c0-44.112 35.888-80 80-80h72.48c21.368 0 41.458 8.321 56.568 23.431l55.235 55.235h167.717c44.112.001 80 35.888 80 80.001zm-40 0c0-22.056-17.944-40-40-40h-176c-5.305 0-10.392-2.107-14.143-5.858l-61.093-61.093c-7.554-7.555-17.599-11.716-28.284-11.716h-72.48c-22.056 0-40 17.944-40 40v352.5c0 22.056 17.944 40 40 40h352c22.056 0 40-17.944 40-40z"></path>
+    </svg>
+  </span>
+  <span>My journals</span>
+</button>
 
-<button type="button" className="profile-menu-item">
+<button
+  type="button"
+  className="profile-menu-item"
+  onClick={() => {
+    setProfileMenuOpen(false);
+    setMobileMenuOpen(false);
+    setProfileSettingsOpen(true);
+  }}
+>
   <span className="profile-menu-item-icon" aria-hidden="true">
     <svg viewBox="0 0 512 512" fill="currentColor">
       <path d="M489.514 296.695l-21.3-17.534c-14.59-12.011-14.564-34.335.001-46.322l21.299-17.534c15.157-12.479 19.034-33.877 9.218-50.882l-42.058-72.846c-9.818-17.004-30.292-24.344-48.674-17.458l-25.835 9.679c-17.696 6.628-37.016-4.551-40.117-23.161l-4.535-27.214c-3.228-19.366-19.821-33.423-39.455-33.423h-84.115c-19.635 0-36.229 14.057-39.456 33.424l-4.536 27.213c-3.107 18.643-22.453 29.778-40.116 23.162l-25.835-9.68c-18.383-6.886-38.855.455-48.674 17.458l-42.057 72.845c-9.817 17.003-5.941 38.402 9.218 50.882l21.299 17.534c14.592 12.012 14.563 34.334 0 46.322l-21.3 17.534c-15.158 12.48-19.035 33.879-9.218 50.882l42.058 72.846c9.818 17.003 30.286 24.344 48.674 17.458l25.834-9.679c17.699-6.631 37.015 4.556 40.116 23.161l4.536 27.212c3.228 19.369 19.822 33.426 39.456 33.426h84.115c19.634 0 36.228-14.057 39.455-33.424l4.535-27.212c3.106-18.638 22.451-29.781 40.117-23.161l25.836 9.678c18.387 6.887 38.856-.454 48.674-17.458l42.059-72.847c9.815-17.003 5.938-38.402-9.219-50.881zm-67.481 103.728l-25.835-9.679c-41.299-15.471-86.37 10.63-93.605 54.043l-4.535 27.213h-84.115l-4.536-27.213c-7.249-43.497-52.386-69.484-93.605-54.043l-25.835 9.679-42.057-72.846 21.299-17.534c34.049-28.03 33.978-80.114 0-108.086l-21.299-17.534 42.058-72.846 25.834 9.679c41.3 15.47 86.37-10.63 93.605-54.043l4.535-27.213h84.115l4.535 27.213c7.25 43.502 52.389 69.481 93.605 54.043l25.835-9.679 42.067 72.836s-.003.003-.011.009l-21.298 17.534c-34.048 28.028-33.98 80.113-.001 108.086l21.3 17.534zm-166.033-243.09c-54.405 0-98.667 44.262-98.667 98.667s44.262 98.667 98.667 98.667 98.667-44.262 98.667-98.667-44.262-98.667-98.667-98.667zm0 157.334c-32.349 0-58.667-26.318-58.667-58.667s26.318-58.667 58.667-58.667 58.667 26.318 58.667 58.667-26.318 58.667-58.667 58.667z" />
@@ -1345,17 +1760,20 @@ onClick={() => {
 ) : (
   <div className="past-entry-list">
    {filteredArchivedEntries.map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        className={`past-entry-button ${
-                          selectedPastEntryId === entry.id ? "past-entry-button--active" : ""
-                        }`}
-                        onClick={() => openPastEntry(entry.id)}
-                      >
-                        <div className="past-entry-date">{entry.dateLabel}</div>
-                        <div className="past-entry-preview">{entry.content}</div>
-                      </button>
+<button
+  key={entry.id}
+ref={(el) => {
+  mobilePastEntryRefs.current[entry.id] = el;
+}}
+  type="button"
+  className={`past-entry-button ${
+    selectedPastEntryId === entry.id ? "past-entry-button--active" : ""
+  }`}
+  onClick={() => openPastEntry(entry.id)}
+>
+  <div className="past-entry-date">{entry.dateLabel}</div>
+  <div className="past-entry-preview">{entry.content}</div>
+</button>
                     ))}
                   </div>
                 )}
@@ -1363,23 +1781,39 @@ onClick={() => {
 
 <div className="mobile-profile-wrap" ref={mobileProfileMenuRef}>
   <div className={`profile-menu ${profileMenuOpen ? "profile-menu--open" : ""}`}>
-    <button type="button" className="profile-menu-item">
-      <span className="profile-menu-item-icon" aria-hidden="true">
-        <svg viewBox="0 0 512.5 512.5" fill="currentColor">
-          <path d="m413.583 393.333c0 11.046-8.954 20-20 20h-78.666c-11.046 0-20-8.954-20-20s8.954-20 20-20h78.666c11.046 0 20 8.955 20 20zm98.667-234.666v273.833c0 44.112-35.888 80-80 80h-352c-44.112 0-80-35.888-80-80v-352.5c0-44.112 35.888-80 80-80h72.48c21.368 0 41.458 8.321 56.568 23.431l55.235 55.235h167.717c44.112.001 80 35.888 80 80.001zm-40 0c0-22.056-17.944-40-40-40h-176c-5.305 0-10.392-2.107-14.143-5.858l-61.093-61.093c-7.554-7.555-17.599-11.716-28.284-11.716h-72.48c-22.056 0-40 17.944-40 40v352.5c0 22.056 17.944 40 40 40h352c22.056 0 40-17.944 40-40z"></path>
-        </svg>
-      </span>
-      <span>Past journals</span>
-    </button>
+<button
+  type="button"
+  className="profile-menu-item"
+  onClick={() => {
+    setProfileMenuOpen(false);
+    setMobileMenuOpen(false);
+    setPastJournalsOpen(true);
+  }}
+>
+  <span className="profile-menu-item-icon" aria-hidden="true">
+    <svg viewBox="0 0 512.5 512.5" fill="currentColor">
+      <path d="m413.583 393.333c0 11.046-8.954 20-20 20h-78.666c-11.046 0-20-8.954-20-20s8.954-20 20-20h78.666c11.046 0 20 8.955 20 20zm98.667-234.666v273.833c0 44.112-35.888 80-80 80h-352c-44.112 0-80-35.888-80-80v-352.5c0-44.112 35.888-80 80-80h72.48c21.368 0 41.458 8.321 56.568 23.431l55.235 55.235h167.717c44.112.001 80 35.888 80 80.001zm-40 0c0-22.056-17.944-40-40-40h-176c-5.305 0-10.392-2.107-14.143-5.858l-61.093-61.093c-7.554-7.555-17.599-11.716-28.284-11.716h-72.48c-22.056 0-40 17.944-40 40v352.5c0 22.056 17.944 40 40 40h352c22.056 0 40-17.944 40-40z"></path>
+    </svg>
+  </span>
+  <span>My journals</span>
+</button>
 
-    <button type="button" className="profile-menu-item">
-      <span className="profile-menu-item-icon" aria-hidden="true">
-        <svg viewBox="0 0 512 512" fill="currentColor">
-          <path d="M489.514 296.695l-21.3-17.534c-14.59-12.011-14.564-34.335.001-46.322l21.299-17.534c15.157-12.479 19.034-33.877 9.218-50.882l-42.058-72.846c-9.818-17.004-30.292-24.344-48.674-17.458l-25.835 9.679c-17.696 6.628-37.016-4.551-40.117-23.161l-4.535-27.214c-3.228-19.366-19.821-33.423-39.455-33.423h-84.115c-19.635 0-36.229 14.057-39.456 33.424l-4.536 27.213c-3.107 18.643-22.453 29.778-40.116 23.162l-25.835-9.68c-18.383-6.886-38.855.455-48.674 17.458l-42.057 72.845c-9.817 17.003-5.941 38.402 9.218 50.882l21.299 17.534c14.592 12.012 14.563 34.334 0 46.322l-21.3 17.534c-15.158 12.48-19.035 33.879-9.218 50.882l42.058 72.846c9.818 17.003 30.286 24.344 48.674 17.458l25.834-9.679c17.699-6.631 37.015 4.556 40.116 23.161l4.536 27.212c3.228 19.369 19.822 33.426 39.456 33.426h84.115c19.634 0 36.228-14.057 39.455-33.424l4.535-27.212c3.106-18.638 22.451-29.781 40.117-23.161l25.836 9.678c18.387 6.887 38.856-.454 48.674-17.458l42.059-72.847c9.815-17.003 5.938-38.402-9.219-50.881zm-67.481 103.728l-25.835-9.679c-41.299-15.471-86.37 10.63-93.605 54.043l-4.535 27.213h-84.115l-4.536-27.213c-7.249-43.497-52.386-69.484-93.605-54.043l-25.835 9.679-42.057-72.846 21.299-17.534c34.049-28.03 33.978-80.114 0-108.086l-21.299-17.534 42.058-72.846 25.834 9.679c41.3 15.47 86.37-10.63 93.605-54.043l4.535-27.213h84.115l4.535 27.213c7.25 43.502 52.389 69.481 93.605 54.043l25.835-9.679 42.067 72.836s-.003.003-.011.009l-21.298 17.534c-34.048 28.028-33.98 80.113-.001 108.086l21.3 17.534zm-166.033-243.09c-54.405 0-98.667 44.262-98.667 98.667s44.262 98.667 98.667 98.667 98.667-44.262 98.667-98.667-44.262-98.667-98.667-98.667zm0 157.334c-32.349 0-58.667-26.318-58.667-58.667s26.318-58.667 58.667-58.667 58.667 26.318 58.667 58.667-26.318 58.667-58.667 58.667z" />
-        </svg>
-      </span>
-      <span>Profile settings</span>
-    </button>
+ <button
+  type="button"
+  className="profile-menu-item"
+  onClick={() => {
+    setProfileMenuOpen(false);
+    setMobileMenuOpen(false);
+    setProfileSettingsOpen(true);
+  }}
+>
+  <span className="profile-menu-item-icon" aria-hidden="true">
+    <svg viewBox="0 0 512 512" fill="currentColor">
+      <path d="M489.514 296.695l-21.3-17.534c-14.59-12.011-14.564-34.335.001-46.322l21.299-17.534c15.157-12.479 19.034-33.877 9.218-50.882l-42.058-72.846c-9.818-17.004-30.292-24.344-48.674-17.458l-25.835 9.679c-17.696 6.628-37.016-4.551-40.117-23.161l-4.535-27.214c-3.228-19.366-19.821-33.423-39.455-33.423h-84.115c-19.635 0-36.229 14.057-39.456 33.424l-4.536 27.213c-3.107 18.643-22.453 29.778-40.116 23.162l-25.835-9.68c-18.383-6.886-38.855.455-48.674 17.458l-42.057 72.845c-9.817 17.003-5.941 38.402 9.218 50.882l21.299 17.534c14.592 12.012 14.563 34.334 0 46.322l-21.3 17.534c-15.158 12.48-19.035 33.879-9.218 50.882l42.058 72.846c9.818 17.003 30.286 24.344 48.674 17.458l25.834-9.679c17.699-6.631 37.015 4.556 40.116 23.161l4.536 27.212c3.228 19.369 19.822 33.426 39.456 33.426h84.115c19.634 0 36.228-14.057 39.455-33.424l4.535-27.212c3.106-18.638 22.451-29.781 40.117-23.161l25.836 9.678c18.387 6.887 38.856-.454 48.674-17.458l42.059-72.847c9.815-17.003 5.938-38.402-9.219-50.881zm-67.481 103.728l-25.835-9.679c-41.299-15.471-86.37 10.63-93.605 54.043l-4.535 27.213h-84.115l-4.536-27.213c-7.249-43.497-52.386-69.484-93.605-54.043l-25.835 9.679-42.057-72.846 21.299-17.534c34.049-28.03 33.978-80.114 0-108.086l-21.299-17.534 42.058-72.846 25.834 9.679c41.3 15.47 86.37-10.63 93.605-54.043l4.535-27.213h84.115l4.535 27.213c7.25 43.502 52.389 69.481 93.605 54.043l25.835-9.679 42.067 72.836s-.003.003-.011.009l-21.298 17.534c-34.048 28.028-33.98 80.113-.001 108.086l21.3 17.534zm-166.033-243.09c-54.405 0-98.667 44.262-98.667 98.667s44.262 98.667 98.667 98.667 98.667-44.262 98.667-98.667-44.262-98.667-98.667-98.667zm0 157.334c-32.349 0-58.667-26.318-58.667-58.667s26.318-58.667 58.667-58.667 58.667 26.318 58.667 58.667-26.318 58.667-58.667 58.667z" />
+    </svg>
+  </span>
+  <span>Profile settings</span>
+</button>
 
     <div className="profile-menu-divider" />
 
@@ -1434,7 +1868,7 @@ onClick={() => {
           <div className="main-inner">
             <div className="main-top">
               <div className="greeting">
-                {isViewingPastEntry ? "ARCHIVED ENTRY" : "GOOD EVENING"}
+                {isReadOnly ? "ARCHIVED ENTRY" : "GOOD EVENING"}
               </div>
 <div className="time-left">
   {!isViewingPastEntry && (
@@ -1449,7 +1883,7 @@ onClick={() => {
   )}
 
   <span>
-    {isViewingPastEntry ? "read only" : `${timeLeft} left today`}
+    {isReadOnly ? "read only" : `${timeLeft} left today`}
   </span>
 </div>
             </div>
@@ -1459,11 +1893,11 @@ onClick={() => {
             </h2>
 
             <textarea
-              className={`writing-area ${isViewingPastEntry ? "writing-area--readonly" : ""}`}
+             className={`writing-area ${isReadOnly ? "writing-area--readonly" : ""}`}
               placeholder="What's on your mind today..."
               value={displayedText}
               onChange={(e) => setText(e.target.value)}
-              readOnly={isViewingPastEntry}
+              readOnly={isReadOnly}
               spellCheck={false}
             />
 
@@ -1472,7 +1906,7 @@ onClick={() => {
                 {wordCount} {wordCount === 1 ? "word" : "words"}
               </div>
 
-              {isViewingPastEntry ? (
+              {isReadOnly ? (
                 <div className="locked-label">Locked</div>
               ) : (
                 <button
@@ -1663,27 +2097,34 @@ onClick={() => {
   onMonthChange={setCalendarMonth}
   mode="single"
   selected={selectedCalendarDate}
- onSelect={(date) => {
-  if (!date) return;
+  onSelect={(date) => {
+    if (!date) return;
 
-  setSelectedCalendarDate(date);
+    setSelectedCalendarDate(date);
 
-  const dayKey = getLocalDayKey(date);
-  const matchingEntry = archivedEntries.find((entry) => entry.dateKey === dayKey);
+    const dayKey = getLocalDayKey(date);
+    const matchingEntry = calendarEntries.find((entry) => entry.dateKey === dayKey);
 
-  if (matchingEntry) {
-    setSelectedPastEntryId(matchingEntry.id);
-    setCalendarOpen(false);
-    setMobileMenuOpen(false);
-    return;
-  }
+if (matchingEntry) {
+  setSelectedPastMonth(null);
+  setSelectedPastDay(null);
+  setSelectedPastFilter("Most Recent");
+  setPastMonthMenuOpen(false);
+  setPastDayMenuOpen(false);
+  setPastFilterMenuOpen(false);
 
-  setCalendarNotice("No entry for this date");
-}}
+  setSelectedPastEntryId(matchingEntry.id);
+  setCalendarOpen(false);
+  setMobileMenuOpen(false);
+  return;
+}
+
+    setCalendarNotice("No entry for this date");
+  }}
   captionLayout="dropdown-months"
   navLayout="after"
-  startMonth={new Date(calendarYearLabel, 0)}
-  endMonth={new Date(calendarYearLabel, 11)}
+  startMonth={new Date(activeJournalYear, 0, 1)}
+  endMonth={new Date(activeJournalYear, 11, 1)}
   showOutsideDays
   modifiers={{
     hasEntry: entryDates,
@@ -1692,6 +2133,215 @@ onClick={() => {
     hasEntry: "calendar-day-has-entry",
   }}
 />
+    </div>
+  </>
+)}
+
+{profileSettingsOpen && (
+  <>
+    <button
+      type="button"
+      className="modal-backdrop"
+      aria-label="Close profile settings modal"
+      onClick={handleCloseProfileSettings}
+    />
+
+    <div
+      className="profile-settings-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="profile-settings-title"
+    >
+      <button
+        type="button"
+        className="profile-settings-modal-close"
+        aria-label="Close profile settings modal"
+        onClick={handleCloseProfileSettings}
+      >
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M4 4L12 12M12 4L4 12"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+
+      <div className="profile-settings-modal-title" id="profile-settings-title">
+        Profile Settings
+      </div>
+
+      <div className="profile-settings-card">
+        <div className="profile-settings-user">
+          <div className="profile-settings-avatar" aria-hidden="true">
+            {(fullName || "U").charAt(0).toUpperCase()}
+          </div>
+
+          <div className="profile-settings-user-text">
+            <div className="profile-settings-name">{fullName || "User"}</div>
+            <div className="profile-settings-email">
+              {accountEmail || "No email found"}
+            </div>
+          </div>
+        </div>
+      </div>
+<div className="profile-settings-section">
+  <div className="profile-settings-section-label">Account Actions</div>
+
+  {!showPasswordFields ? (
+    <div className="profile-settings-actions">
+      <button
+        type="button"
+        className="auth-button rename-modal-button"
+        onClick={handleOpenPasswordFields}
+      >
+        Reset password
+      </button>
+    </div>
+  ) : (
+    <div className="profile-settings-password-block">
+      <input
+        type="password"
+        className="rename-modal-input auth-input"
+        placeholder="New password"
+        value={newPassword}
+    onChange={(e) => {
+  setNewPassword(e.target.value);
+  if (passwordError) setPasswordError("");
+  if (passwordSuccess) setPasswordSuccess("");
+}}
+      />
+
+<input
+  type="password"
+  className="rename-modal-input auth-input"
+  placeholder="Confirm new password"
+  value={confirmPassword}
+  onChange={(e) => {
+    setConfirmPassword(e.target.value);
+    if (passwordError) setPasswordError("");
+    if (passwordSuccess) setPasswordSuccess("");
+  }}
+/>
+
+  <div
+  className="rename-error profile-settings-password-error"
+  style={{ opacity: passwordError ? 1 : 0 }}
+>
+  {passwordError || "placeholder"}
+</div>
+
+<div
+  className="rename-success profile-settings-password-success"
+  style={{ opacity: passwordSuccess ? 1 : 0 }}
+>
+  {passwordSuccess || "placeholder"}
+</div>
+
+      <div className="profile-settings-actions">
+        <button
+          type="button"
+          className="rename-modal-button auth-button"
+          onClick={handleUpdatePassword}
+          disabled={
+            updatingPassword || !newPassword.trim() || !confirmPassword.trim()
+          }
+        >
+          {updatingPassword ? (
+            <span className="auth-button-spinner" aria-hidden="true" />
+          ) : (
+            "Update"
+          )}
+        </button>
+      </div>
+    </div>
+  )}
+</div>
+    </div>
+  </>
+)}
+
+{pastJournalsOpen && (
+  <>
+    <button
+      type="button"
+      className="modal-backdrop"
+      aria-label="Close past journals modal"
+      onClick={handleClosePastJournals}
+    />
+
+    <div
+      className="past-journals-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="past-journals-title"
+    >
+      <button
+        type="button"
+        className="past-journals-modal-close"
+        aria-label="Close past journals modal"
+        onClick={handleClosePastJournals}
+      >
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M4 4L12 12M12 4L4 12"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+
+      <div className="past-journals-modal-title" id="past-journals-title">
+        {fullName ? `${fullName}'s Journals` : "My Journals"}
+      </div>
+
+{journals.length === 0 ? (
+  <div className="past-journals-empty">
+    No journals yet
+  </div>
+) : (
+  <div className="past-journals-list">
+    {journals.map((journal) => {
+      const isCurrent = journal.id === currentJournalId;
+      const isActive = journal.id === activeJournalId;
+
+      return (
+<button
+  key={journal.id}
+  type="button"
+  className={`past-journals-item ${
+    isActive ? "past-journals-item--active" : ""
+  }`}
+  onClick={() => handleOpenJournal(journal.id)}
+>
+  <div className="past-journals-item-left">
+    <span className="past-journals-icon" aria-hidden="true">
+      <svg
+        viewBox="0 0 296.999 296.999"
+        fill="currentColor"
+      >
+        <path d="M45.432,35.049c-2.809,0-5.451,1.095-7.446,3.085c-2.017,2.012-3.128,4.691-3.128,7.543v159.365c0,5.844,4.773,10.61,10.641,10.625c24.738,0.059,66.184,5.215,94.776,35.136V84.023c0-1.981-0.506-3.842-1.461-5.382C115.322,40.849,70.226,35.107,45.432,35.049z"/>
+        <path d="M262.167,205.042V45.676c0-2.852-1.111-5.531-3.128-7.543c-1.995-1.99-4.639-3.085-7.445-3.085c-24.793,0.059-69.889,5.801-93.357,43.593c-0.955,1.54-1.46,3.401-1.46,5.382v166.779c28.592-29.921,70.038-35.077,94.776-35.136C257.394,215.651,262.167,210.885,262.167,205.042z"/>
+        <path d="M286.373,71.801h-7.706v133.241c0,14.921-12.157,27.088-27.101,27.125c-20.983,0.05-55.581,4.153-80.084,27.344c42.378-10.376,87.052-3.631,112.512,2.171c3.179,0.724,6.464-0.024,9.011-2.054c2.538-2.025,3.994-5.052,3.994-8.301V82.427C297,76.568,292.232,71.801,286.373,71.801z"/>
+        <path d="M18.332,205.042V71.801h-7.706C4.768,71.801,0,76.568,0,82.427v168.897c0,3.25,1.456,6.276,3.994,8.301c2.545,2.029,5.827,2.78,9.011,2.054c25.46-5.803,70.135-12.547,112.511-2.171c-24.502-23.19-59.1-27.292-80.083-27.342C30.49,232.13,18.332,219.963,18.332,205.042z"/>
+      </svg>
+    </span>
+
+    <div className="past-journals-item-text">
+      <div className="past-journals-item-name">{journal.name}</div>
+      <div className="past-journals-item-year">
+        {journal.year}
+        {isCurrent ? " (current year)" : ""}
+      </div>
+    </div>
+  </div>
+</button>
+      );
+    })}
+  </div>
+)}
     </div>
   </>
 )}
