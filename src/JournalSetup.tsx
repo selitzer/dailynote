@@ -15,28 +15,47 @@ const currentYear = new Date().getFullYear();
   const isValid =
     journalName.length > 0 && journalName.length <= 40;
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  e.preventDefault();
 
-    if (!isValid || saving) return;
+  if (!isValid || saving) return;
 
-    setSaving(true);
+  setSaving(true);
 
-    const { error } = await supabase.from("profiles").upsert({
-      id: userId,
-      full_name: fullName,
-      journal_name: journalName, // ✅ no trim
-    });
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
+  if (userError || !user) {
+    console.error("Load user error:", userError?.message);
     setSaving(false);
-
-    if (error) {
-      console.error("Profile save error:", error.message);
-      return;
-    }
-
-    onComplete();
+    return;
   }
+
+  const provider =
+    typeof user.app_metadata?.provider === "string"
+      ? user.app_metadata.provider
+      : "email";
+
+const { error } = await supabase.from("profiles").upsert({
+  id: userId,
+  full_name: fullName,
+  journal_name: journalName,
+  email: user.email ?? null,
+  auth_provider: provider,
+  has_password: provider === "email",
+});
+
+  setSaving(false);
+
+  if (error) {
+    console.error("Profile save error:", error.message);
+    return;
+  }
+
+  onComplete();
+}
 
   return (
     <main className="auth-page">

@@ -78,6 +78,9 @@ function formatShortDate(date: Date) {
 function App({ userId, journalName, fullName, onJournalNameUpdated }: AppProps) {
   const initialDate = new Date();
 
+const [hasPassword, setHasPassword] = useState(false);
+const [authProvider, setAuthProvider] = useState("email");
+
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [savingEntry, setSavingEntry] = useState(false);
@@ -367,12 +370,18 @@ const handleUpdatePassword = async () => {
     return;
   }
 
-  // ✅ SUCCESS BEHAVIOR
+  await supabase
+  .from("profiles")
+  .update({ has_password: true })
+  .eq("id", userId);
+
+setHasPassword(true);
+
   setNewPassword("");
   setConfirmPassword("");
   setPasswordSuccess("Password updated");
+  
 
-  // optional auto-hide after 2 sec
   setTimeout(() => {
     setPasswordSuccess("");
   }, 2000);
@@ -394,7 +403,7 @@ useEffect(() => {
 useEffect(() => {
   let mounted = true;
 
-  async function loadAccountEmail() {
+  async function loadAccountDetails() {
     const {
       data: { user },
       error,
@@ -405,12 +414,23 @@ useEffect(() => {
       return;
     }
 
-    if (mounted) {
-      setAccountEmail(user?.email ?? "");
-    }
+    if (!user || !mounted) return;
+
+    setAccountEmail(user.email ?? "");
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("auth_provider, has_password")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!mounted) return;
+
+    setAuthProvider(profile?.auth_provider ?? "email");
+    setHasPassword(profile?.has_password ?? false);
   }
 
-  loadAccountEmail();
+  loadAccountDetails();
 
   return () => {
     mounted = false;
@@ -2191,17 +2211,17 @@ if (matchingEntry) {
 <div className="profile-settings-section">
   <div className="profile-settings-section-label">Account Actions</div>
 
-  {!showPasswordFields ? (
-    <div className="profile-settings-actions">
-      <button
-        type="button"
-        className="auth-button rename-modal-button"
-        onClick={handleOpenPasswordFields}
-      >
-        Reset password
-      </button>
-    </div>
-  ) : (
+{!showPasswordFields ? (
+  <div className="profile-settings-actions">
+    <button
+      type="button"
+      className="auth-button rename-modal-button"
+      onClick={handleOpenPasswordFields}
+    >
+      {hasPassword ? "Reset password" : "Create password"}
+    </button>
+  </div>
+) : (
     <div className="profile-settings-password-block">
       <input
         type="password"

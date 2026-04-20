@@ -10,6 +10,7 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState("");
 
 
 async function handleGoogleLogin() {
@@ -49,16 +50,31 @@ async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     return;
   }
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+setAuthError("");
 
-  if (error) {
-    console.error("Login error:", error.message);
-    setIsSubmitting(false);
-    return;
+const { error } = await supabase.auth.signInWithPassword({
+  email,
+  password,
+});
+
+if (error) {
+  const { data: profileRecord } = await supabase
+    .from("profiles")
+    .select("auth_provider")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (profileRecord?.auth_provider === "google") {
+    setAuthError(
+      "This account was created with Google."
+    );
+  } else {
+    setAuthError("Invalid email or password.");
   }
+
+  setIsSubmitting(false);
+  return;
+}
 
   console.log("Login successful");
 }
@@ -198,7 +214,7 @@ async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
   </button>
 )}
         </form>
-
+{authError && <div className="auth-error">{authError}</div>}
         <p className="auth-switch">
           {isSignup ? (
             <>
