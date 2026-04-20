@@ -58,16 +58,16 @@ const { error } = await supabase.auth.signInWithPassword({
 });
 
 if (error) {
+  const normalizedEmail = email.trim().toLowerCase();
+
   const { data: profileRecord } = await supabase
     .from("profiles")
-    .select("auth_provider")
-    .eq("email", email)
+    .select("auth_provider, email")
+    .ilike("email", normalizedEmail)
     .maybeSingle();
 
   if (profileRecord?.auth_provider === "google") {
-    setAuthError(
-      "This account was created with Google."
-    );
+    setAuthError("This account was created with Google. Please sign in with Google.");
   } else {
     setAuthError("Invalid email or password.");
   }

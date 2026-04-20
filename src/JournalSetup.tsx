@@ -33,10 +33,16 @@ async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     return;
   }
 
-  const provider =
-    typeof user.app_metadata?.provider === "string"
-      ? user.app_metadata.provider
-      : "email";
+ const provider =
+  Array.isArray(user.app_metadata?.providers) &&
+  user.app_metadata.providers.includes("google")
+    ? "google"
+    : Array.isArray(user.app_metadata?.providers) &&
+      user.app_metadata.providers.includes("email")
+    ? "email"
+    : typeof user.app_metadata?.provider === "string"
+    ? user.app_metadata.provider
+    : "email";
 
   const { error } = await supabase.from("profiles").upsert({
     id: userId,
@@ -46,6 +52,7 @@ async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     auth_provider: provider,
     has_password: provider === "email",
   });
+  
 
   setSaving(false);
 
