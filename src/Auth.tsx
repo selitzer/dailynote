@@ -66,7 +66,7 @@ async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
   return (
     <main className="auth-page">
       <div className="auth-header">
-        <h1 className="auth-logo">DailyNote</h1>
+        <h1 className="auth-logo">Daily Diario</h1>
       </div>
 
       <div className="auth-container">
