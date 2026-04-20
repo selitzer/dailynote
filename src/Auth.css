@@ -185,3 +185,17 @@ font-size: 0.9rem;
 .auth-link:hover::after {
   width: 100%;
 }
+
+.google-btn-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+.googlebtn {
+      border: 1px solid #343434;
+    background: transparent;
+    color: #f2f2f2;
+        margin-top: 12px;
+}
