@@ -778,17 +778,20 @@ async function getOrCreateCurrentJournal() {
       }
     }
 
-    const { data: createdJournal, error: createError } = await supabase
-      .from("journals")
-      .insert({
-        user_id: userId,
-        name: `${currentYear} Journal`,
-        year: currentYear,
-        is_current: true,
-        closed_at: null,
-      })
-      .select("id, name, year, is_current, created_at, closed_at")
-      .single();
+const initialJournalName =
+  journalName.trim().length > 0 ? journalName.trim() : `${currentYear} Journal`;
+
+const { data: createdJournal, error: createError } = await supabase
+  .from("journals")
+  .insert({
+    user_id: userId,
+    name: initialJournalName,
+    year: currentYear,
+    is_current: true,
+    closed_at: null,
+  })
+  .select("id, name, year, is_current, created_at, closed_at")
+  .single();
 
     if (createError) {
       console.error("Create current year journal error:", createError.message);
