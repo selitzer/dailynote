@@ -128,7 +128,7 @@ const [journalMenuOpen, setJournalMenuOpen] = useState(false);
 const desktopJournalMenuRef = useRef<HTMLDivElement | null>(null);
 const mobileJournalMenuRef = useRef<HTMLDivElement | null>(null);
 
-const [currentJournalName, setCurrentJournalName] = useState("");
+const [currentJournalName, setCurrentJournalName] = useState(journalName);
 
 const [calendarOpen, setCalendarOpen] = useState(false);
 const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -389,6 +389,13 @@ const handleUpdatePassword = async () => {
     setPasswordSuccess("");
   }, 2000);
 };
+
+useEffect(() => {
+  if (journalName.trim()) {
+    setCurrentJournalName(journalName);
+    setRenameJournalValue(journalName);
+  }
+}, [journalName]);
 
 useEffect(() => {
   if (!pastJournalsOpen) return;
@@ -895,7 +902,7 @@ useEffect(() => {
   }
 
   initializeJournalFlow();
-}, [userId]);
+}, [userId, journalName]);
 
 useEffect(() => {
   if (!activeJournalId) return;
