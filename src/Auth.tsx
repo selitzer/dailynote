@@ -30,8 +30,9 @@ async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
   setIsSubmitting(true);
 
   if (isSignup) {
+   const normalizedEmail = email.trim().toLowerCase();
     const { error } = await supabase.auth.signUp({
-      email,
+      email: normalizedEmail,
       password,
       options: {
         data: {
@@ -60,20 +61,21 @@ const { error } = await supabase.auth.signInWithPassword({
 });
 
 if (error) {
-  const { data: profileRecord, error: profileLookupError } = await supabase
-    .from("profiles")
-    .select("auth_provider, email")
-    .ilike("email", normalizedEmail)
-    .maybeSingle();
+  const { data: accountHint, error: hintError } = await supabase.rpc(
+    "get_login_account_hint",
+    { input_email: normalizedEmail }
+  );
+
+  const hint = Array.isArray(accountHint) ? accountHint[0] : null;
 
   console.log("failed login debug", {
     loginError: error.message,
     normalizedEmail,
-    profileRecord,
-    profileLookupError,
+    accountHint,
+    hintError,
   });
 
-  if (profileRecord?.auth_provider === "google") {
+  if (hint?.auth_provider === "google" && hint?.has_password === false) {
     setAuthError("This account was created with Google. Please sign in with Google.");
   } else {
     setAuthError("Invalid email or password.");
