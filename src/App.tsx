@@ -4,6 +4,8 @@ import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import "./App.css";
 
+
+
 type JournalEntry = {
   id: string;
   journal_id: string;
@@ -76,6 +78,8 @@ function formatShortDate(date: Date) {
 }
 
 function App({ userId, journalName, fullName, onJournalNameUpdated }: AppProps) {
+
+  
   const initialDate = new Date();
 
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -143,6 +147,13 @@ const [passwordSuccess, setPasswordSuccess] = useState("");
 
 const [pastJournalsOpen, setPastJournalsOpen] = useState(false);
 
+const appReady =
+  !journalsLoading &&
+  !entriesLoading &&
+  !!currentJournalId &&
+  !!activeJournalId &&
+  !!currentJournalName;
+
 const desktopPastEntryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 const mobilePastEntryRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -151,6 +162,8 @@ const activeJournal = useMemo(() => {
 }, [journals, activeJournalId]);
 
 const activeJournalYear = activeJournal?.year ?? new Date().getFullYear();
+
+
 
 const calendarEntries = useMemo<PastEntry[]>(() => {
   return entries
@@ -877,6 +890,15 @@ useEffect(() => {
     if (!trimmed) return 0;
     return trimmed.split(/\s+/).length;
   }, [displayedText]);
+
+
+if (!appReady) {
+  return (
+    <div className="app-loader">
+      <div className="app-spinner" aria-label="Loading" />
+    </div>
+  );
+}
 
   const trimmedSavedText = savedText.trim();
   const hasSavedText = trimmedSavedText.length > 0;
