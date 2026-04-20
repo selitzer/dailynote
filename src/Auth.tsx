@@ -41,11 +41,20 @@ async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
       },
     });
 
-    if (error) {
-      console.error("Signup error:", error.message);
-      setIsSubmitting(false);
-      return;
-    }
+  if (error) {
+  console.error("Signup error:", error.message);
+
+  if (error.message.toLowerCase().includes("password")) {
+    setAuthError(error.message);
+  } else if (error.message.toLowerCase().includes("user already registered")) {
+    setAuthError("An account with this email already exists.");
+  } else {
+    setAuthError(error.message);
+  }
+
+  setIsSubmitting(false);
+  return;
+}
 
     console.log("Signup successful");
     return;
@@ -88,6 +97,13 @@ if (error) {
   console.log("Login successful");
 }
 
+const isFormValid = isSignup
+  ? name.trim().length > 0 &&
+    email.trim().length > 0 &&
+    password.trim().length > 0
+  : email.trim().length > 0 &&
+    password.trim().length > 0;
+
   return (
     <main className="auth-page">
       <div className="auth-header">
@@ -106,7 +122,10 @@ if (error) {
               type="text"
               placeholder="Name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+  setName(e.target.value);
+  if (authError) setAuthError("");
+}}
               disabled={isSubmitting}
             />
           )}
@@ -116,7 +135,10 @@ if (error) {
             type="email"
             placeholder="Email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+           onChange={(e) => {
+  setEmail(e.target.value);
+  if (authError) setAuthError("");
+}}
             disabled={isSubmitting}
           />
 
@@ -126,7 +148,10 @@ if (error) {
     type={showPassword ? "text" : "password"}
     placeholder="Password"
     value={password}
-    onChange={(e) => setPassword(e.target.value)}
+    onChange={(e) => {
+  setPassword(e.target.value);
+  if (authError) setAuthError("");
+}}
     disabled={isSubmitting}
   />
 
@@ -162,7 +187,11 @@ if (error) {
 </button>
 </div>
 
-          <button className="auth-button" type="submit" disabled={isSubmitting}>
+          <button
+              className="auth-button"
+              type="submit"
+              disabled={isSubmitting || !isFormValid}
+            >
             {isSubmitting ? (
               <span className="auth-button-spinner" aria-label="Loading" />
             ) : isSignup ? (
@@ -232,12 +261,13 @@ if (error) {
                 type="button"
                 className="auth-link"
                 disabled={isSubmitting}
-                onClick={() => {
-                  setIsSignup(false);
-                  setName("");
-                  setEmail("");
-                  setPassword("");
-                }}
+   onClick={() => {
+  setIsSignup(false);
+  setName("");
+  setEmail("");
+  setPassword("");
+  setAuthError(""); 
+}}
               >
                 Log in
               </button>
@@ -249,12 +279,13 @@ if (error) {
                 type="button"
                 className="auth-link"
                 disabled={isSubmitting}
-                onClick={() => {
-                  setIsSignup(true);
-                  setName("");
-                  setEmail("");
-                  setPassword("");
-                }}
+          onClick={() => {
+  setIsSignup(true);
+  setName("");
+  setEmail("");
+  setPassword("");
+  setAuthError("");
+}}
               >
                 Sign up
               </button>

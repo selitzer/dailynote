@@ -125,7 +125,9 @@ font-size: 0.9rem;
 .auth-button:disabled {
   cursor: default;
   opacity: 0.3;
+  pointer-events: none;
 }
+
 
 .auth-button-spinner {
   width: 12px;
@@ -198,4 +200,29 @@ font-size: 0.9rem;
     background: transparent;
     color: #f2f2f2;
         margin-top: 12px;
+}
+
+.auth-error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+
+  font-size: 0.9rem;
+  color: #ffffff; 
+
+  text-align: center;
+  line-height: 1.4;
+
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
