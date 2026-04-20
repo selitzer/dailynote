@@ -52,19 +52,26 @@ async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
 
 setAuthError("");
 
+const normalizedEmail = email.trim().toLowerCase();
+
 const { error } = await supabase.auth.signInWithPassword({
-  email,
+  email: normalizedEmail,
   password,
 });
 
 if (error) {
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const { data: profileRecord } = await supabase
+  const { data: profileRecord, error: profileLookupError } = await supabase
     .from("profiles")
     .select("auth_provider, email")
     .ilike("email", normalizedEmail)
     .maybeSingle();
+
+  console.log("failed login debug", {
+    loginError: error.message,
+    normalizedEmail,
+    profileRecord,
+    profileLookupError,
+  });
 
   if (profileRecord?.auth_provider === "google") {
     setAuthError("This account was created with Google. Please sign in with Google.");
