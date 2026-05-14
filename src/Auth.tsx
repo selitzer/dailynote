@@ -200,7 +200,11 @@ const isFormValid = isSignup
               "Log In"
             )}
           </button>
-{!isSignup && (
+
+  <div className="auth-or">
+    <span>or</span>
+  </div>
+
   <button
     type="button"
     onClick={handleGoogleLogin}
@@ -250,7 +254,7 @@ const isFormValid = isSignup
 
     <span>Continue with Google</span>
   </button>
-)}
+
         </form>
 {authError && <div className="auth-error">{authError}</div>}
         <p className="auth-switch">

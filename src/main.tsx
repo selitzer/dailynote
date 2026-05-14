@@ -4,6 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import "./index.css";
 import App from "./App";
 import Auth from "./Auth";
+import LandingPage from "./LandingPage";
 import JournalSetup from "./JournalSetup";
 import { supabase } from "./supabaseClient";
 
@@ -18,6 +19,7 @@ function RootApp() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [showLanding, setShowLanding] = useState(true);
 
   async function loadProfile(userId: string) {
     const { data, error } = await supabase
@@ -123,6 +125,14 @@ function RootApp() {
   }
 
   if (!session) {
+    if (showLanding) {
+      return (
+        <LandingPage
+          onGetStarted={() => setShowLanding(false)}
+          onLogin={() => setShowLanding(false)}
+        />
+      );
+    }
     return <Auth />;
   }
 
@@ -147,13 +157,13 @@ function RootApp() {
     );
   }
 
-return (
-  <App
-    userId={session.user.id}
-    journalName={profile.journal_name}
-    fullName={profile?.full_name ?? fullName}
-  />
-);
+  return (
+    <App
+      userId={session.user.id}
+      journalName={profile.journal_name}
+      fullName={profile?.full_name ?? fullName}
+    />
+  );
 }
 
 createRoot(document.getElementById("root")!).render(
