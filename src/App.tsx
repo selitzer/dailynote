@@ -149,7 +149,9 @@ const [currentJournalName, setCurrentJournalName] = useState(journalName);
 
 const [calendarOpen, setCalendarOpen] = useState(false);
 const [selectedContributionMonth, setSelectedContributionMonth] = useState(new Date().getMonth());
+const [contributionMonthMenuOpen, setContributionMonthMenuOpen] = useState(false);
 const [hoveredContributionDayKey, setHoveredContributionDayKey] = useState<string | null>(null);
+const contributionMonthMenuRef = useRef<HTMLDivElement | null>(null);
 
 const [showPasswordFields, setShowPasswordFields] = useState(false);
 const [newPassword, setNewPassword] = useState("");
@@ -231,6 +233,7 @@ const openCalendar = () => {
   setJournalMenuOpen(false);
   setMobileMenuOpen(false);
   setHoveredContributionDayKey(null);
+  setContributionMonthMenuOpen(false);
   setSelectedContributionMonth(
     activeJournalYear === today.getFullYear() ? today.getMonth() : 0
   );
@@ -561,6 +564,45 @@ useEffect(() => {
   document.addEventListener("keydown", handleEscape);
   return () => document.removeEventListener("keydown", handleEscape);
 }, [calendarOpen]);
+
+useEffect(() => {
+  if (!calendarOpen) return;
+
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+
+  return () => {
+    document.body.style.overflow = previousOverflow;
+  };
+}, [calendarOpen]);
+
+useEffect(() => {
+  if (!contributionMonthMenuOpen) return;
+
+  const handlePointerDown = (e: MouseEvent) => {
+    const target = e.target as Node;
+    const clickedMenu =
+      contributionMonthMenuRef.current?.contains(target) ?? false;
+
+    if (!clickedMenu) {
+      setContributionMonthMenuOpen(false);
+    }
+  };
+
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setContributionMonthMenuOpen(false);
+    }
+  };
+
+  document.addEventListener("mousedown", handlePointerDown);
+  document.addEventListener("keydown", handleEscape);
+
+  return () => {
+    document.removeEventListener("mousedown", handlePointerDown);
+    document.removeEventListener("keydown", handleEscape);
+  };
+}, [contributionMonthMenuOpen]);
 
 useEffect(() => {
   if (!renameJournalOpen) return;
@@ -2169,21 +2211,60 @@ ref={(el) => {
     {activeJournalYear}
   </div>
 
-  <select
-    className="calendar-month-select"
-    value={selectedContributionMonth}
-    onChange={(event) => {
-      setSelectedContributionMonth(Number(event.target.value));
-      setHoveredContributionDayKey(null);
-    }}
-    aria-label="Choose month"
-  >
-    {contributionMonths.map((month, index) => (
-      <option value={index} key={month.key}>
-        {month.title}
-      </option>
-    ))}
-  </select>
+  <div className="calendar-month-menu" ref={contributionMonthMenuRef}>
+    <button
+      type="button"
+      className={`past-filter-submenu-trigger calendar-month-trigger ${
+        contributionMonthMenuOpen ? "past-filter-submenu-trigger--open" : ""
+      }`}
+      onClick={() => setContributionMonthMenuOpen((prev) => !prev)}
+      aria-label="Choose month"
+      aria-expanded={contributionMonthMenuOpen}
+      aria-haspopup="menu"
+    >
+      <span>{selectedContributionMonthData?.title}</span>
+      <span
+        className={`past-filter-submenu-chevron ${
+          contributionMonthMenuOpen ? "past-filter-submenu-chevron--open" : ""
+        }`}
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M3 6L8 11L13 6"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    </button>
+
+    {contributionMonthMenuOpen && (
+      <div className="past-filter-submenu-options calendar-month-options" role="menu">
+        {contributionMonths.map((month, index) => (
+          <button
+            type="button"
+            className={`past-filter-submenu-item ${
+              selectedContributionMonth === index
+                ? "past-filter-submenu-item--active"
+                : ""
+            }`}
+            key={month.key}
+            onClick={() => {
+              setSelectedContributionMonth(index);
+              setHoveredContributionDayKey(null);
+              setContributionMonthMenuOpen(false);
+            }}
+            role="menuitem"
+          >
+            {month.title}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
 </div>
 
 <div
@@ -2195,7 +2276,7 @@ ref={(el) => {
       <div
         className="contribution-days"
         style={{
-          gridTemplateColumns: `repeat(${selectedContributionMonthData.columnCount}, 14px)`,
+          gridTemplateColumns: `repeat(${selectedContributionMonthData.columnCount}, 20px)`,
         }}
       >
         {selectedContributionMonthData.days.map((day, cellIndex) => {
