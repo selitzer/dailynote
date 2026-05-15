@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient";
-import { DayPicker } from "react-day-picker";
-import "react-day-picker/style.css";
 import "./App.css";
 
 type JournalEntry = {
@@ -57,6 +55,25 @@ function formatMonthLabel(date: Date) {
   return date.toLocaleDateString(undefined, {
     month: "long",
   });
+}
+function getOrdinalDay(day: number) {
+  if (day > 3 && day < 21) return `${day}th`;
+
+  switch (day % 10) {
+    case 1:
+      return `${day}st`;
+    case 2:
+      return `${day}nd`;
+    case 3:
+      return `${day}rd`;
+    default:
+      return `${day}th`;
+  }
+}
+function formatContributionDate(date: Date) {
+  const weekday = date.toLocaleDateString(undefined, { weekday: "short" });
+  const month = date.toLocaleDateString(undefined, { month: "short" });
+  return `${weekday}, ${month} ${getOrdinalDay(date.getDate())}`;
 }
 function formatFullDate(date: Date) {
   return date.toLocaleDateString(undefined, {
@@ -131,10 +148,8 @@ const mobileJournalMenuRef = useRef<HTMLDivElement | null>(null);
 const [currentJournalName, setCurrentJournalName] = useState(journalName);
 
 const [calendarOpen, setCalendarOpen] = useState(false);
-const [calendarMonth, setCalendarMonth] = useState(new Date());
-const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>();
-const calendarYearLabel = calendarMonth.getFullYear();
-const [calendarNotice, setCalendarNotice] = useState("");
+const [selectedContributionMonth, setSelectedContributionMonth] = useState(new Date().getMonth());
+const [hoveredContributionDayKey, setHoveredContributionDayKey] = useState<string | null>(null);
 
 const [showPasswordFields, setShowPasswordFields] = useState(false);
 const [newPassword, setNewPassword] = useState("");
@@ -165,23 +180,62 @@ const calendarEntries = useMemo<PastEntry[]>(() => {
     }));
 }, [entries]);
 
+const calendarEntryMap = useMemo(() => {
+  return new Map(calendarEntries.map((entry) => [entry.dateKey, entry]));
+}, [calendarEntries]);
+
+const contributionMonths = useMemo(() => {
+  return Array.from({ length: 12 }, (_, monthIndex) => {
+    const firstDay = new Date(activeJournalYear, monthIndex, 1);
+    const daysInMonth = new Date(activeJournalYear, monthIndex + 1, 0).getDate();
+    const columnCount = Math.ceil((firstDay.getDay() + daysInMonth) / 7);
+    const cellCount = columnCount * 7;
+    const days = Array.from({ length: cellCount }, (_, cellIndex) => {
+      const dayNumber = cellIndex - firstDay.getDay() + 1;
+
+      if (dayNumber < 1 || dayNumber > daysInMonth) {
+        return null;
+      }
+
+      const date = new Date(activeJournalYear, monthIndex, dayNumber);
+      const dayKey = getLocalDayKey(date);
+
+      return {
+        date,
+        dayKey,
+      };
+    });
+
+    return {
+      key: getMonthKey(firstDay),
+      title: firstDay.toLocaleDateString(undefined, { month: "long" }),
+      columnCount,
+      days,
+    };
+  });
+}, [activeJournalYear]);
+
+const selectedContributionMonthData =
+  contributionMonths[selectedContributionMonth] ?? contributionMonths[0];
+
+const selectedContributionEntryCount = useMemo(() => {
+  if (!selectedContributionMonthData) return 0;
+
+  return selectedContributionMonthData.days.filter((day) => {
+    return day ? calendarEntryMap.has(day.dayKey) : false;
+  }).length;
+}, [calendarEntryMap, selectedContributionMonthData]);
+
 const openCalendar = () => {
+  const today = new Date();
   setJournalMenuOpen(false);
   setMobileMenuOpen(false);
-  setSelectedCalendarDate(undefined);
-  setCalendarNotice("");
-  setCalendarMonth(new Date(activeJournalYear, 0, 1));
+  setHoveredContributionDayKey(null);
+  setSelectedContributionMonth(
+    activeJournalYear === today.getFullYear() ? today.getMonth() : 0
+  );
   setCalendarOpen(true);
 };
-
-const entryDates = useMemo(() => {
-  return entries
-    .filter((entry) => entry.content.trim())
-    .map((entry) => {
-      const [year, month, day] = entry.day_key.split("-").map(Number);
-      return new Date(year, month - 1, day);
-    });
-}, [entries]);
 
 const archivedEntries = useMemo<PastEntry[]>(() => {
   return entries
@@ -507,16 +561,6 @@ useEffect(() => {
   document.addEventListener("keydown", handleEscape);
   return () => document.removeEventListener("keydown", handleEscape);
 }, [calendarOpen]);
-
-useEffect(() => {
-  if (!calendarNotice) return;
-
-  const timeout = window.setTimeout(() => {
-    setCalendarNotice("");
-  }, 2000);
-
-  return () => window.clearTimeout(timeout);
-}, [calendarNotice]);
 
 useEffect(() => {
   if (!renameJournalOpen) return;
@@ -2122,56 +2166,119 @@ ref={(el) => {
   </div>
 
   <div className="calendar-modal-year">
-    {calendarYearLabel}
+    {activeJournalYear}
   </div>
-  {calendarNotice && (
-  <div className="calendar-notice">
-    {calendarNotice}
-  </div>
-)}
+
+  <select
+    className="calendar-month-select"
+    value={selectedContributionMonth}
+    onChange={(event) => {
+      setSelectedContributionMonth(Number(event.target.value));
+      setHoveredContributionDayKey(null);
+    }}
+    aria-label="Choose month"
+  >
+    {contributionMonths.map((month, index) => (
+      <option value={index} key={month.key}>
+        {month.title}
+      </option>
+    ))}
+  </select>
 </div>
 
-<DayPicker
-  month={calendarMonth}
-  onMonthChange={setCalendarMonth}
-  mode="single"
-  selected={selectedCalendarDate}
-  onSelect={(date) => {
-    if (!date) return;
+<div
+  className="contribution-calendar"
+  aria-label={`${activeJournalYear} entry activity`}
+>
+  {selectedContributionMonthData && (
+    <div className="contribution-month-panel">
+      <div
+        className="contribution-days"
+        style={{
+          gridTemplateColumns: `repeat(${selectedContributionMonthData.columnCount}, 14px)`,
+        }}
+      >
+        {selectedContributionMonthData.days.map((day, cellIndex) => {
+          if (!day) {
+            return (
+              <span
+                className="contribution-day contribution-day--outside"
+                key={`${selectedContributionMonthData.key}-${cellIndex}`}
+                aria-hidden="true"
+              />
+            );
+          }
 
-    setSelectedCalendarDate(date);
+          const matchingEntry = calendarEntryMap.get(day.dayKey);
+          const dateLabel = formatContributionDate(day.date);
+          const popoverIsVisible = hoveredContributionDayKey === day.dayKey;
 
-    const dayKey = getLocalDayKey(date);
-    const matchingEntry = calendarEntries.find((entry) => entry.dateKey === dayKey);
+          if (!matchingEntry) {
+            return (
+              <span
+                className="contribution-day"
+                key={day.dayKey}
+                onMouseEnter={() => setHoveredContributionDayKey(day.dayKey)}
+                onMouseLeave={() => setHoveredContributionDayKey(null)}
+              >
+                {popoverIsVisible && (
+                  <span className="contribution-popover">
+                    {dateLabel}
+                  </span>
+                )}
+              </span>
+            );
+          }
 
-if (matchingEntry) {
-  setSelectedPastMonth(null);
-  setSelectedPastDay(null);
-  setSelectedPastFilter("Most Recent");
-  setPastMonthMenuOpen(false);
-  setPastDayMenuOpen(false);
-  setPastFilterMenuOpen(false);
+          return (
+            <button
+              type="button"
+              key={day.dayKey}
+              className="contribution-day contribution-day--entry"
+              aria-label={`Open entry from ${dateLabel}`}
+              onMouseEnter={() => setHoveredContributionDayKey(day.dayKey)}
+              onMouseLeave={() => setHoveredContributionDayKey(null)}
+              onClick={() => {
+                setSelectedPastMonth(null);
+                setSelectedPastDay(null);
+                setSelectedPastFilter("Most Recent");
+                setPastMonthMenuOpen(false);
+                setPastDayMenuOpen(false);
+                setPastFilterMenuOpen(false);
+                setHoveredContributionDayKey(null);
 
-  setSelectedPastEntryId(matchingEntry.id);
-  setCalendarOpen(false);
-  setMobileMenuOpen(false);
-  return;
-}
+                if (matchingEntry.dateKey === currentDayKey) {
+                  goToToday();
+                } else {
+                  setSelectedPastEntryId(matchingEntry.id);
+                }
+              }}
+            >
+              {popoverIsVisible && (
+                <span className="contribution-popover">
+                  {dateLabel}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  )}
 
-    setCalendarNotice("No entry for this date");
-  }}
-  captionLayout="dropdown-months"
-  navLayout="after"
-  startMonth={new Date(activeJournalYear, 0, 1)}
-  endMonth={new Date(activeJournalYear, 11, 1)}
-  showOutsideDays
-  modifiers={{
-    hasEntry: entryDates,
-  }}
-  modifiersClassNames={{
-    hasEntry: "calendar-day-has-entry",
-  }}
-/>
+  <div className="contribution-footer">
+    <div>
+      {selectedContributionEntryCount}{" "}
+      {selectedContributionEntryCount === 1 ? "entry" : "entries"}
+    </div>
+    <div className="contribution-legend" aria-hidden="true">
+      <span>Empty</span>
+      <span className="contribution-legend-square" />
+      <span>Completed</span>
+      <span className="contribution-legend-square contribution-legend-square--filled" />
+    </div>
+  </div>
+</div>
     </div>
   </>
 )}

@@ -1150,11 +1150,12 @@ display: flex;
   position: fixed;
   top: 50%;
   left: 50%;
+  width: 300px;
   transform: translate(-50%, -50%);
   background: #171717;
   border: 1px solid #2e2e2e;
   border-radius: 8px;
-  padding: 20px 20px 18px;
+  padding: 22px 22px 18px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
   z-index: 121;
   display: flex;
@@ -1184,6 +1185,27 @@ display: flex;
   letter-spacing: 0.04em;
 }
 
+.calendar-month-select {
+  height: 34px;
+  margin-top: 8px;
+  padding: 0 34px 0 12px;
+  border: 1px solid #303030;
+  border-radius: 6px;
+  background: #1e1e1e;
+  color: #f2f2f2;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+}
+
+.calendar-month-select:focus,
+.calendar-month-select:focus-visible {
+  border-color: #555555;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+}
+
 .calendar-modal-close {
   position: absolute;
   top: 14px;
@@ -1209,238 +1231,106 @@ display: flex;
   color: #ffffff;
 }
 
-.calendar-modal .rdp {
-  --rdp-accent-color: #b3b3b3;
-  --rdp-background-color: transparent;
-  margin: 0;
-  color: #f2f2f2;
+.contribution-calendar {
+  width: 100%;
 }
 
-.calendar-modal .rdp-months {
-  justify-content: center;
+.contribution-month-panel {
+  display: grid;
+  justify-items: center;
 }
 
-.calendar-modal .rdp-month {
-  width: auto;
+.contribution-days {
+  display: grid;
+  grid-template-rows: repeat(7, 14px);
+  grid-auto-flow: column;
+  gap: 7px;
 }
 
-.calendar-modal .rdp-month_caption {
+.contribution-day {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0;
+  background: #282828;
+  font: inherit;
+  overflow: visible;
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.contribution-day:focus,
+.contribution-day:focus-visible {
+  outline: 2px solid #7a7a7a;
+  outline-offset: 2px;
+}
+
+.contribution-day--entry {
+  background: #f2f2f2;
+  border-color: #ffffff;
+  cursor: pointer;
+}
+
+.contribution-day--entry:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.contribution-day--outside,
+.contribution-day:disabled {
+  visibility: hidden;
+  cursor: default;
+}
+
+.contribution-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 8px;
-  width: 100%;
+  margin-top: 18px;
+  color: #9b9b9b;
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
-.calendar-modal .rdp-dropdowns {
+.contribution-legend {
   display: flex;
   align-items: center;
-  gap: 0;
-  font-size: 0.875rem;
-  color: #d3d3d3;
+  gap: 6px;
 }
 
-.calendar-modal .rdp-dropdowns > :nth-child(2) {
-  display: none;
-}
-
-.calendar-modal .rdp-dropdown_root {
-  position: relative;
-}
-
-.calendar-modal .rdp-dropdown {
-  height: 36px;
-  padding: 0 34px 0 12px;
-  border: 1px solid #2e2e2e;
-  border-radius: 6px;
-  background: #1b1b1b;
-  color: #f2f2f2;
-  font: inherit;
-  font-size: 0.9rem;
-  outline: none;
-  box-shadow: none;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.calendar-modal .rdp-dropdown:focus,
-.calendar-modal .rdp-dropdown:focus-visible,
-.calendar-modal .rdp-dropdown select:focus,
-.calendar-modal .rdp-dropdown select:focus-visible,
-.calendar-modal select:focus,
-.calendar-modal select:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
-  -webkit-focus-ring-color: transparent !important;
-}
-
-.calendar-modal .rdp-nav {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-left: auto;
-}
-
-.calendar-modal .rdp-button_previous,
-.calendar-modal .rdp-button_next {
-  width: 18px;
-  height: 18px;
-  border: none;
-  background: transparent;
-  color: #949494;
-  padding: 0;
-}
-
-.calendar-modal .rdp-button_previous:hover,
-.calendar-modal .rdp-button_next:hover {
-  color: #d0d0d0;
-}
-
-.calendar-modal .rdp-chevron {
-  fill: currentColor;
-}
-
-.calendar-modal .rdp-month_grid {
-  border-collapse: separate;
-  border-spacing: 5px 5px;
-}
-
-.calendar-modal .rdp-weekday {
-  width: 48px;
-  height: 28px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #9f9f9f;
-  text-align: center;
-}
-
-.calendar-modal .rdp-day {
-  width: 40px;
-  height: 40px;
-  border-radius: 4px;
-  text-align: center;
-  font-size: 0.875rem;
-  font-weight: 800;
-}
-
-
-
-.calendar-modal .rdp-day_button {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  background: #222222;
-  color: #f2f2f2;
-  font: inherit;
-  font-size: 0.95rem;
-  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
-  position: relative;
-}
-
-.calendar-modal .rdp-day_button:hover {
-  background: #292929;
-}
-
-.calendar-modal .rdp-today:not(.rdp-outside) .rdp-day_button::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 28px;
-  height: 28px;
-  transform: translate(-50%, -50%);
-  border: 1px solid #8a8a8a;
+.contribution-legend-square {
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
-  pointer-events: none;
+  background: #282828;
 }
 
-.rdp-today .rdp-day_button:not(.rdp-outside) {
-  background: #b3b3b3;
-  color: #000000;
+.contribution-legend-square--filled {
+  background: #f2f2f2;
 }
 
-.rdp-today .rdp-day_button:not(.rdp-outside):hover {
-    background: #b3b3b3;
-  color: #000000;
-}
-
-.calendar-modal .rdp-today .rdp-day_button::after {
-  display: none;
-}
-.calendar-modal .rdp-outside .rdp-day_button {
-  color: #6f6f6f;
-  background: #141414;
-}
-
-.calendar-modal .rdp-disabled .rdp-day_button {
-  opacity: 0.45;
-}
-
-.calendar-modal .rdp-day_button {
-  position: relative;
-}
-.rdp-day.calendar-day-has-entry::before {
-  content: "";
+.contribution-popover {
   position: absolute;
-  bottom: 6px;
   left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 1300;
   transform: translateX(-50%);
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #b3b3b3;
-  pointer-events: none;
-  z-index: 50;
-}
-
-.rdp-day.calendar-day-has-entry {
-  position: relative;
-}
-
-.calendar-modal .rdp-day_button {
-  outline: none;
-  box-shadow: none;
-  border: none;
-}
-
-.calendar-modal .rdp-day_button:focus,
-.calendar-modal .rdp-day_button:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
-  border: none !important;
-}
-
-.calendar-modal .rdp-selected .rdp-day_button,
-.calendar-modal .rdp-day_button[aria-selected="true"] {
-  outline: none !important;
-  box-shadow: none !important;
-  border: none !important;
-}
-
-.calendar-modal .rdp-day:not(.rdp-selected) .rdp-day_button,
-.calendar-modal .rdp-day_button[aria-selected="false"] {
-  outline: none !important;
-  box-shadow: none !important;
-  border: none !important;
-}
-
-
-.calendar-notice {
-  position: absolute;
-  left: 31.5%;
-  top: 86px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  color: #949494;
-  font-size: 0.9rem;
-  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #303030;
+  background: #292929;
+  color: #ffffff;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 0.60rem;
+  font-weight: 400;
   line-height: 1;
-  z-index: 200;
+  white-space: nowrap;
   pointer-events: none;
-
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
 }
-
 
 .profile-settings-modal {
   position: fixed;
