@@ -19,7 +19,9 @@ function RootApp() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [showLanding, setShowLanding] = useState(true);
+  const [showLanding, setShowLanding] = useState(() => {
+    return window.location.hash !== "#login";
+  });
 
   async function loadProfile(userId: string) {
     const { data, error } = await supabase
@@ -116,6 +118,18 @@ function RootApp() {
     };
   }, []);
 
+  useEffect(() => {
+    function handleHashChange() {
+      setShowLanding(window.location.hash !== "#login");
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+    };
+  }, []);
+
   if (initialLoading) {
     return (
       <div className="app-loader">
@@ -127,10 +141,16 @@ function RootApp() {
   if (!session) {
     if (showLanding) {
       return (
-        <LandingPage
-          onGetStarted={() => setShowLanding(false)}
-          onLogin={() => setShowLanding(false)}
-        />
+      <LandingPage
+        onGetStarted={() => {
+          window.location.hash = "login";
+          setShowLanding(false);
+        }}
+        onLogin={() => {
+          window.location.hash = "login";
+          setShowLanding(false);
+        }}
+      />
       );
     }
     return <Auth />;
