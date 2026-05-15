@@ -108,7 +108,8 @@ function RootApp() {
         setProfile(null);
         return;
       }
-
+      window.history.replaceState(null, "", window.location.pathname);
+      setShowLanding(false);
       refreshProfile(newSession.user.id);
     });
 
