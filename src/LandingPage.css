@@ -49,15 +49,12 @@
   align-items: center;
   justify-content: space-between;
   padding: 18px 40px;
-  background: rgba(23, 23, 23, 0.82);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  background: #171717;
+  border-bottom: 1px solid rgba(255, 255, 255, 0);
   transition: border-color 0.3s ease, background 0.3s ease;
 }
 
 .lp-nav:hover {
-  background: rgba(23, 23, 23, 0.92);
   border-color: #2a2a2a;
 }
 
